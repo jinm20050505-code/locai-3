@@ -6,7 +6,7 @@ import { MessageForm, OrderButton, ProposeForm } from "@/components/orders/actio
 import { DemoBadge, Notice, StatusTag, card } from "@/components/ui";
 import { formatDateTime, formatDay } from "@/lib/dates";
 import { formatKg, formatYen } from "@/lib/money";
-import { METHOD_LABEL, TEMP_LABEL, type Method } from "@/lib/delivery";
+import { METHOD_LABEL, SLOT_LABEL, TEMP_LABEL, type Method } from "@/lib/delivery";
 import { effectiveStatus, STATUS_LABEL } from "@/lib/order-rules";
 import { placeLabel } from "@/lib/regions";
 import { getCurrentUser } from "@/lib/session";
@@ -50,7 +50,8 @@ async function Detail({ params, searchParams }: { params: PageProps<"/orders/[id
 
   // 次にすること（役割と状態で、1つにしぼって伝える）
   const next =
-    s === "pending" ? (isBuyer ? `農家さんの回答を待っています。回答期限は ${formatDateTime(o.replyDeadline)} です。まだ確定していません。` : `回答してください（回答期限：${formatDateTime(o.replyDeadline)}）。期限までに回答がないと、この購入希望は期限切れになり、仮押さえは解除されます。`)
+    s === "pending" && o.feePending ? (isBuyer ? `送料・配達料は見積もり中です。農家さんが送料を提示したら、総額を確かめて同意してください（回答期限：${formatDateTime(o.replyDeadline)}）。まだ確定していません。` : `送料・配達料を決めて「条件を変えて提案する」から提示してください（回答期限：${formatDateTime(o.replyDeadline)}）。お店が総額に同意すると販売確定です。`)
+    : s === "pending" ? (isBuyer ? `農家さんの回答を待っています。回答期限は ${formatDateTime(o.replyDeadline)} です。まだ確定していません。` : `回答してください（回答期限：${formatDateTime(o.replyDeadline)}）。期限までに回答がないと、この購入希望は期限切れになり、仮押さえは解除されます。`)
     : s === "changeRequested" ? (isBuyer ? `農家さんから数量の変更の提案があります。同意すると販売確定です（期限：${formatDateTime(o.replyDeadline)}）。` : `お店の返事を待っています（期限：${formatDateTime(o.replyDeadline)}）。`)
     : s === "confirmed" ? "販売確定です。次に、支払い方法・支払期限・発送予定（または受け取りの日時と場所）を、下のメッセージで相談してください。支払いと受け渡しはアプリの外で行います。"
     : s === "expired" ? "回答期限を過ぎたため、期限切れ（未成立）になりました。仮押さえは解除されました。"
@@ -77,9 +78,9 @@ async function Detail({ params, searchParams }: { params: PageProps<"/orders/[id
         <dl className="mt-1 grid grid-cols-[auto_1fr] gap-x-4 gap-y-1">
           <dt className="font-bold">数量</dt><dd>{formatKg(o.quantityGrams)}</dd>
           <dt className="font-bold">商品代</dt><dd>{formatYen(o.pricePerKg)} × {formatKg(o.quantityGrams)} ＝ {formatYen(o.subtotalYen)}</dd>
-          <dt className="font-bold">{o.method === "pickup" ? "引き取り" : "送料・配達料"}</dt><dd>{formatYen(o.feeYen)}</dd>
-          <dt className="font-bold">送料込みの総額</dt><dd className="text-xl font-bold">{formatYen(o.totalYen)}</dd>
-          <dt className="font-bold">受け取り</dt><dd>{METHOD_LABEL[o.method as Method]}{o.method === "pickup" ? `（${placeLabel(o.listing.pickupPref, o.listing.pickupCity)}）` : o.method === "courier" ? `（${TEMP_LABEL[o.listing.courierTemp ?? "normal"]}・届くまで約${o.listing.courierDays ?? 1}日）` : ""}・{formatDay(o.useDate)}</dd>
+          <dt className="font-bold">{o.method === "pickup" ? "引き取り" : "送料・配達料"}</dt><dd>{o.feePending ? "見積もり中（農家さんが提示します）" : formatYen(o.feeYen)}</dd>
+          <dt className="font-bold">合計金額</dt><dd className="text-xl font-bold">{o.feePending ? `未確定（商品代 ${formatYen(o.subtotalYen)} ＋ 送料）` : formatYen(o.totalYen)}</dd>
+          <dt className="font-bold">受け取り</dt><dd>{METHOD_LABEL[o.method as Method]}{o.method === "pickup" ? `（${placeLabel(o.listing.pickupPref, o.listing.pickupCity)}）` : o.method === "courier" ? `（${TEMP_LABEL[o.listing.courierTemp ?? "normal"]}・届くまで約${o.listing.courierDays ?? 1}日）` : ""}・{formatDay(o.useDate)}{o.receiveSlot ? `・${SLOT_LABEL[o.receiveSlot]}` : ""}</dd>
           <dt className="font-bold">申し込み</dt><dd>{formatDateTime(o.createdAt)}</dd>
         </dl>
       </section>
@@ -88,7 +89,8 @@ async function Detail({ params, searchParams }: { params: PageProps<"/orders/[id
         <section className="space-y-2 rounded-2xl border-2 border-note bg-note-soft p-4" aria-labelledby="prop">
           <h2 id="prop" className="text-lg font-bold">農家さんからの変更の提案</h2>
           <p className="text-lg">数量 {formatKg(o.quantityGrams)} → <b>{formatKg(o.proposedGrams)}</b></p>
-          <p className="text-lg">送料込みの総額 {formatYen(o.totalYen)} → <b>{formatYen(o.proposedTotalYen!)}</b></p>
+          {o.proposedFeeYen !== null && (o.feePending || o.proposedFeeYen !== o.feeYen) && <p className="text-lg">送料・配達料 {o.feePending ? "見積もり中" : formatYen(o.feeYen)} → <b>{formatYen(o.proposedFeeYen)}</b></p>}
+          <p className="text-lg">合計金額 {o.feePending ? "未確定" : formatYen(o.totalYen)} → <b>{formatYen(o.proposedTotalYen!)}</b></p>
           {o.proposalNote && <p>ひとこと：{o.proposalNote}</p>}
         </section>
       )}
@@ -98,11 +100,11 @@ async function Detail({ params, searchParams }: { params: PageProps<"/orders/[id
           {isBuyer && s === "changeRequested" && <OrderButton orderId={o.id} act="accept" text="この変更に同意する（販売確定）" />}
           {!isBuyer && s === "pending" && (
             <>
-              <OrderButton orderId={o.id} act="approve" text="承認する（販売確定）" />
-              <details className="rounded-xl border-2 border-line p-3">
-                <summary className="min-h-12 cursor-pointer py-2 text-lg font-bold text-brand-dark">数量を変えて提案する</summary>
+              {!o.feePending && <OrderButton orderId={o.id} act="approve" text="承認する（販売確定）" />}
+              <details open={o.feePending} className="rounded-xl border-2 border-line p-3">
+                <summary className="min-h-12 cursor-pointer py-2 text-lg font-bold text-brand-dark">{o.feePending ? "送料を決めて提案する" : "条件を変えて提案する（数量・送料）"}</summary>
                 <div className="mt-2">
-                  <ProposeForm orderId={o.id} currentKg={String(o.quantityGrams / 1000)} hint={`${formatKg(o.listing.minGrams)} から ${formatKg(o.listing.unitGrams)} ずつ。いま提案できるのは ${formatKg(avail + o.heldGrams)} まで`} />
+                  <ProposeForm needFee={o.feePending} orderId={o.id} currentKg={String(o.quantityGrams / 1000)} hint={`${formatKg(o.listing.minGrams)} から ${formatKg(o.listing.unitGrams)} ずつ。いま提案できるのは ${formatKg(avail + o.heldGrams)} まで`} />
                 </div>
               </details>
               <OrderButton orderId={o.id} act="decline" text="今回は見送る" kind="plain" confirmText="この購入希望を見送りますか？（取り置きは戻ります）" />

@@ -4,10 +4,10 @@ import { ListingWizard, type WizardValues } from "@/components/producer/listing-
 import { Notice } from "@/components/ui";
 import { dayText, formatDay, todayText } from "@/lib/dates";
 import { getDb } from "@/lib/db";
-import { bandsOf } from "@/lib/delivery";
 import { formatKg, formatYen } from "@/lib/money";
 import { placeLabel } from "@/lib/regions";
 import { requireRole } from "@/lib/session";
+import { listingToWizard } from "@/lib/wizard-values";
 import { getPublicWanted } from "@/server/wanted";
 
 export default function NewListingPage({ searchParams }: PageProps<"/producer/listings/new">) {
@@ -31,7 +31,7 @@ async function Body({ searchParams }: { searchParams: PageProps<"/producer/listi
   let initial: WizardValues = {
     name: "", variety: "", description: "", surplusReason: "", surplusOther: "", totalKg: "", pricePerKg: "", allowPartial: "yes", minKg: "1", unitGrams: "500",
     availableFrom: from, availableUntil: plusDays(from, 2), acceptUntil: `${from}T12:00`, replyUntil: `${from}T20:00`,
-    courier: "", courierTemp: "normal", courierDays: "1", courierPrefs: user.prefecture ?? "", delivery: "", deliveryFeeYen: "", deliveryMaxOrders: "", deliveryPrefs: user.prefecture ?? "",
+    courier: "", courierTemp: "normal", courierDays: "1", courierPrefs: user.prefecture ?? "", courierQuote: "", delivery: "", deliveryFeeYen: "", deliveryMaxOrders: "", deliveryPrefs: user.prefecture ?? "", deliveryQuote: "", deliveryWeekdays: "",
     pickup: "on", pickupPref: user.prefecture ?? "", pickupCity: user.city ?? "", wantedPostId: "",
   };
   let banner: React.ReactNode = null;
@@ -42,15 +42,7 @@ async function Body({ searchParams }: { searchParams: PageProps<"/producer/listi
     if (l) {
       // 値段・量・受け渡し条件は前回のまま。日付は新しくする（期間の長さは前回と同じ）
       const days = Math.round((l.availableUntil.getTime() - l.availableFrom.getTime()) / 86_400_000);
-      const bands = bandsOf(l.courierFees);
-      initial = {
-        ...initial, name: l.name, variety: l.variety ?? "", description: l.description ?? "", surplusReason: l.surplusReason && ["規格外", "豊作"].includes(l.surplusReason) ? l.surplusReason : l.surplusReason ? "その他" : "", surplusOther: l.surplusReason && !["規格外", "豊作"].includes(l.surplusReason) ? l.surplusReason : "",
-        totalKg: g2kg(l.totalGrams), pricePerKg: String(l.pricePerKg), allowPartial: l.allowPartial ? "yes" : "no", minKg: g2kg(l.minGrams), unitGrams: String(l.unitGrams), availableUntil: plusDays(from, days),
-        courier: l.courier ? "on" : "", courierTemp: l.courierTemp ?? "normal", courierDays: String(l.courierDays ?? 1), courierPrefs: l.courierPrefs.join(","),
-        ...Object.fromEntries(bands.flatMap((b, i) => [[`band${i + 1}Kg`, g2kg(b.upToGrams)], [`band${i + 1}Fee`, String(b.feeYen)]])),
-        delivery: l.delivery ? "on" : "", deliveryFeeYen: l.deliveryFeeYen === null ? "" : String(l.deliveryFeeYen), deliveryMaxOrders: l.deliveryMaxOrders ? String(l.deliveryMaxOrders) : "", deliveryPrefs: l.deliveryPrefs.join(","),
-        pickup: l.pickup ? "on" : "", pickupPref: l.pickupPref ?? "", pickupCity: l.pickupCity ?? "",
-      };
+      initial = { ...initial, ...listingToWizard(l, false), availableUntil: plusDays(from, days) };
       banner = <p className="rounded-xl bg-brand-soft p-3">前回の出品の内容を写しました。日付は新しくしています。写真は選び直してください。</p>;
     }
   } else if (wantedId) {

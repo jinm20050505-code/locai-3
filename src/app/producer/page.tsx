@@ -7,8 +7,9 @@ import { formatDateTime, formatDay } from "@/lib/dates";
 import { formatKg, formatYen } from "@/lib/money";
 import { requireRole } from "@/lib/session";
 import { listOwnListings, weeklyImpressions } from "@/server/listings";
+import { threadCounts } from "@/server/threads";
 
-const DONE: Record<string, string> = { created: "出品しました。お店の一覧に表示されます。", paused: "一時停止しました。新しい購入希望は届きません。", open: "受付を再開しました。", closed: "受付を終了しました。" };
+const DONE: Record<string, string> = { created: "出品しました。お店の一覧に表示されます。", updated: "出品を変更しました。すでに届いている購入希望の条件は変わりません。", paused: "一時停止しました。新しい購入希望は届きません。", open: "受付を再開しました。", closed: "受付を終了しました。" };
 const STATUS: Record<string, string> = { open: "受付中", paused: "一時停止中", closed: "受付終了" };
 
 export default function ProducerHome({ searchParams }: PageProps<"/producer">) {
@@ -30,6 +31,7 @@ async function List({ searchParams }: { searchParams: PageProps<"/producer">["se
   const now = new Date();
   const rows = await listOwnListings(user.id, now);
   const shows = await weeklyImpressions(user.id, now);
+  const threads = await threadCounts(user.id);
   const done = typeof sp.done === "string" ? DONE[sp.done] : null;
   return (
     <>
@@ -64,6 +66,8 @@ async function List({ searchParams }: { searchParams: PageProps<"/producer">["se
               )}
               {l.waiting > 0 && <LinkButton href="/producer/orders">回答待ちの購入希望 {l.waiting}件 を見る</LinkButton>}
               <StatusButtons id={l.id} status={l.status} />
+              {l.status !== "closed" && <LinkButton href={`/producer/listings/${l.id}/edit`} kind="secondary">出品を編集する</LinkButton>}
+              <LinkButton href={`/producer/listings/${l.id}/messages`} kind="plain">お店からの相談（{threads.get(l.id) ?? 0}件）</LinkButton>
               <p className="text-base">
                 <Link href={`/listings/${l.id}`} className="font-bold text-brand-dark underline">お店から見える画面</Link>
                 {"　"}

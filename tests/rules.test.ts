@@ -51,7 +51,8 @@ describe("残りの量と期限", () => {
   });
   it("受け取り方法は、お店の府県が範囲に入っているときだけ使える", () => {
     const l = { courier: true, courierPrefs: ["27"], courierFees: [{ upToGrams: 5000, feeYen: 800 }], delivery: true, deliveryPrefs: ["26"], deliveryFeeYen: 1200, pickup: false };
-    expect(methodFee(l, "courier", "27", 3000)).toEqual({ ok: true, feeYen: 800 });
+    expect(methodFee(l, "courier", "27", 3000)).toEqual({ ok: true, feeYen: 800, quote: false });
+    expect(methodFee({ ...l, courierQuote: true }, "courier", "27", 3000)).toEqual({ ok: true, feeYen: 0, quote: true });
     expect(methodFee(l, "delivery", "27", 3000).ok).toBe(false);
     expect(methodFee(l, "pickup", "27", 3000).ok).toBe(false);
   });

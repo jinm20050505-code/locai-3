@@ -10,7 +10,7 @@ export async function Header() {
   const links = !user
     ? [{ href: "/search", label: "野菜を探す" }, { href: "/login", label: "ログイン" }]
     : user.role === "buyer"
-      ? [{ href: "/search", label: "野菜を探す" }, { href: "/orders", label: "注文の状況" }, { href: "/wanted", label: "探しています" }, { href: "/account", label: "お店の情報" }]
+      ? [{ href: "/search", label: "野菜を探す" }, { href: "/orders", label: "マイページ" }, { href: "/wanted", label: "探しています" }, { href: "/account", label: "お店の情報" }]
       : [{ href: "/producer", label: "出品一覧" }, { href: "/producer/orders", label: "購入希望" }, { href: "/producer/wanted", label: "探しています" }, { href: "/account", label: "プロフィール" }];
   return (
     <header className="border-b-4 border-brand bg-white">

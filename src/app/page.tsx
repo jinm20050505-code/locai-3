@@ -46,7 +46,7 @@ async function MainAction() {
     <div className="space-y-3">
       <LinkButton href="/search">野菜を探す</LinkButton>
       {user ? (
-        <LinkButton href="/orders" kind="secondary">注文の状況を見る</LinkButton>
+        <LinkButton href="/orders" kind="secondary">マイページ（注文の状況）</LinkButton>
       ) : (
         <div className="space-y-2">
           <LinkButton href="/signup" kind="secondary">はじめての方（登録する）</LinkButton>

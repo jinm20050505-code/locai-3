@@ -50,6 +50,7 @@ async function List() {
         const deliveries = orders.filter((o) => o.method === "delivery" && (o.s === "confirmed" || o.s === "pending" || o.s === "changeRequested")).length;
         if (l.deliveryMaxOrders && deliveries >= l.deliveryMaxOrders) notes.push(`配達の受付件数（${l.deliveryMaxOrders}件）に達しています`);
         if (waiting.some((o) => o.replyDeadline.getTime() - now.getTime() < 6 * 3_600_000)) notes.push("回答期限まで6時間を切った注文があります");
+        if (waiting.some((o) => o.feePending)) notes.push("送料・配達料が見積もりの注文があります（注文ごとに送料を決めて提案してください。全件承認では承認されません）");
         return (
           <li key={l.id} className={`${card} space-y-3`}>
             <h2 className="text-xl font-bold">{l.name}{l.variety && `（${l.variety}）`}</h2>
@@ -70,7 +71,7 @@ async function List() {
                   <Link href={`/orders/${o.id}`} className="block space-y-1 rounded-xl border-2 border-line p-3 hover:border-brand-strong">
                     <StatusTag status={o.s} label={STATUS_SHORT[o.s]} />
                     <p className="text-lg font-bold">{o.buyer.name}（{placeLabel(o.buyer.prefecture, o.buyer.city)}）・{formatKg(o.quantityGrams)}</p>
-                    <p className="text-base">商品代 {formatYen(o.subtotalYen)}・送料・配達料 {formatYen(o.feeYen)}・{METHOD_LABEL[o.method as Method]}・使用日 {formatDay(o.useDate)}</p>
+                    <p className="text-base">商品代 {formatYen(o.subtotalYen)}・送料・配達料 {o.feePending ? "見積もり中" : formatYen(o.feeYen)}・{METHOD_LABEL[o.method as Method]}・使用日 {formatDay(o.useDate)}</p>
                     {o.s === "pending" && <p className="text-base font-bold text-note">回答期限 {formatDateTime(o.replyDeadline)}</p>}
                     <p className="text-base font-bold text-brand-dark underline">くわしく見る・注文ごとに承認／条件変更／見送り</p>
                   </Link>

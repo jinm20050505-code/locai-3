@@ -15,35 +15,36 @@ datasource db {
 // ログイン（Better Auth）が使う表。列の構成は Better Auth の決まりに合わせる
 
 model User {
-  id             String        @id
-  name           String // 表示名（店名・農園名）
-  email          String        @unique
-  emailVerified  Boolean       @default(false)
-  image          String?
-  createdAt      DateTime      @default(now())
-  updatedAt      DateTime      @updatedAt
+  id              String           @id
+  name            String // 表示名（店名・農園名）
+  email           String           @unique
+  emailVerified   Boolean          @default(false)
+  image           String?
+  createdAt       DateTime         @default(now())
+  updatedAt       DateTime         @updatedAt
   // 役割：buyer（飲食店）／producer（生産者）。登録したあとは変えられない
-  role           String
+  role            String
   // 地域（飲食店：お店の場所／生産者：産地）。府県と市区町村まで。詳しい住所は持たない
-  prefecture     String?
-  city           String?
+  prefecture      String?
+  city            String?
   // 生産者のこだわり（任意）
-  intro          String?
+  intro           String?
   // 生産者の栽培している品目（任意）
-  items          String?
+  items           String?
   // デモ用の架空のアカウント
-  isDemo         Boolean       @default(false)
-  sessions       Session[]
-  accounts       Account[]
-  listings       Listing[]
-  ordersAsBuyer  Order[]       @relation("OrderBuyer")
-  ordersAsSeller Order[]       @relation("OrderProducer")
-  messages       Message[]
-  aiCalls        AiCall[]
-  photo          UserPhoto?
-  searchPreset   SearchPreset?
-  wantedPosts    WantedPost[]
-  reports        Report[]
+  isDemo          Boolean          @default(false)
+  sessions        Session[]
+  accounts        Account[]
+  listings        Listing[]
+  ordersAsBuyer   Order[]          @relation("OrderBuyer")
+  ordersAsSeller  Order[]          @relation("OrderProducer")
+  messages        Message[]
+  aiCalls         AiCall[]
+  photo           UserPhoto?
+  searchPreset    SearchPreset?
+  wantedPosts     WantedPost[]
+  reports         Report[]
+  listingMessages ListingMessage[] @relation("ListingMessageSender")
 
   @@map("user")
 }
@@ -99,9 +100,9 @@ model Verification {
 // 出品
 
 model Listing {
-  id                String        @id @default(uuid())
+  id                String           @id @default(uuid())
   producerId        String
-  producer          User          @relation(fields: [producerId], references: [id])
+  producer          User             @relation(fields: [producerId], references: [id])
   name              String // 野菜の名前（例：なす）
   variety           String? // 品種（例：賀茂茄子）
   description       String? // ひとこと（育て方・おすすめの使い方）
@@ -109,18 +110,19 @@ model Listing {
   minGrams          Int // いちばん少ない注文量
   unitGrams         Int // 注文の単位（例：500g ずつ）
   pricePerKg        Int // 1kg あたりの値段（円）
-  availableFrom     DateTime      @db.Date // 受け渡しできる最初の日
-  availableUntil    DateTime      @db.Date // 受け渡しできる最後の日
+  availableFrom     DateTime         @db.Date // 受け渡しできる最初の日
+  availableUntil    DateTime         @db.Date // 受け渡しできる最後の日
   acceptUntil       DateTime // 購入希望の受付の締め切り
   replyUntil        DateTime // 生産者の回答期限（受付の締め切り以降。これまでに返事のない購入希望は期限切れ）
   surplusReason     String? // 余剰理由（任意。規格外・豊作など）
-  allowPartial      Boolean       @default(true) // 一部だけの購入を受け付けるか（受け付けないときは、残り全部での購入だけ）
+  allowPartial      Boolean          @default(true) // 一部だけの購入を受け付けるか（受け付けないときは、残り全部での購入だけ）
   // 受け取り方法：宅配発送（送料は重さで決まる）／自分で配達（料金は固定・受付件数の上限あり）／引き取り（料金0円）
-  courier           Boolean       @default(false)
+  courier           Boolean          @default(false)
   courierPrefs      String[]
   courierFees       Json? // [{ "upToGrams": 5000, "feeYen": 900 }, ...]（重さの上限の小さい順）
   courierTemp       String? // normal（常温）／chilled（冷蔵）
   courierDays       Int? // 発送から到着までの目安日数
+  courierQuote      Boolean          @default(false) // 送料は注文ごとに見積もる（送料が分からない場合：仕様「見積相談」）
   pickup            Boolean
   pickupPref        String?
   pickupCity        String?
@@ -128,15 +130,18 @@ model Listing {
   deliveryFeeYen    Int?
   deliveryPrefs     String[] // お届けできる府県のコード
   deliveryMaxOrders Int? // 自分で配達の受付可能件数（販売確定と回答待ちの合計）
+  deliveryQuote     Boolean          @default(false) // 配達料は注文ごとに見積もる
+  deliveryWeekdays  Int[] // 配達できる曜日（0=日〜6=土。空ならすべての曜日）
   status            String // open（受付中）／paused（一時停止）／closed（受付終了）
-  isDemo            Boolean       @default(false)
-  createdAt         DateTime      @default(now())
-  updatedAt         DateTime      @updatedAt
+  isDemo            Boolean          @default(false)
+  createdAt         DateTime         @default(now())
+  updatedAt         DateTime         @updatedAt
   photo             ListingPhoto?
   orders            Order[]
   wantedPostId      String? // 「探しています」に応えた出品
-  wantedPost        WantedPost?   @relation(fields: [wantedPostId], references: [id])
+  wantedPost        WantedPost?      @relation(fields: [wantedPostId], references: [id])
   impressions       Impression[]
+  listingMessages   ListingMessage[]
 
   @@index([status, acceptUntil])
   @@map("listing")
@@ -176,12 +181,15 @@ model Order {
   feeYen              Int
   totalYen            Int
   heldGrams           Int // 仮押さえしている量（終わった注文は 0）
+  feePending          Boolean   @default(false) // 送料・配達料が見積もり中（生産者が提示し、店が同意するまで確定しない）
+  receiveSlot         String? // 受け取りの時間帯（morning／afternoon／evening。空なら指定なし）
   useDate             DateTime  @db.Date
   replyDeadline       DateTime // 生産者の返事の期限
   // 条件変更の提案（生産者から）
   proposedGrams       Int?
   proposedSubtotalYen Int?
   proposedTotalYen    Int?
+  proposedFeeYen      Int?
   proposalNote        String?
   decidedAt           DateTime?
   createdAt           DateTime  @default(now())
@@ -295,4 +303,21 @@ model Report {
 
   @@unique([reporterId, targetType, targetId])
   @@map("report")
+}
+
+// 出品に紐づく相談（注文の前の質問と返信）。その店と生産者の2人だけが読める
+model ListingMessage {
+  id        String   @id @default(uuid())
+  listingId String
+  listing   Listing  @relation(fields: [listingId], references: [id], onDelete: Cascade)
+  buyerId   String // どの店との相談か
+  senderId  String
+  sender    User     @relation("ListingMessageSender", fields: [senderId], references: [id])
+  body      String
+  requestId String
+  createdAt DateTime @default(now())
+
+  @@unique([senderId, requestId])
+  @@index([listingId, buyerId, createdAt])
+  @@map("listing_message")
 }

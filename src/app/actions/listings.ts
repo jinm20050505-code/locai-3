@@ -6,7 +6,7 @@ import { redirect } from "next/navigation";
 import { z } from "zod";
 import { validateListing, type FieldErrors } from "@/lib/listing-rules";
 import { requireRole } from "@/lib/session";
-import { createListing, previousValues, setListingStatus } from "@/server/listings";
+import { createListing, previousValues, setListingStatus, updateListing } from "@/server/listings";
 import { getCurrentUser } from "@/lib/session";
 
 export type ListingState = { errors?: FieldErrors; problem?: string };
@@ -22,7 +22,16 @@ function photoKind(b: Buffer): string | null {
 export async function createListingAction(_: ListingState, fd: FormData): Promise<ListingState> {
   await connection();
   const user = await requireRole("producer");
-  const input = Object.fromEntries([...fd.keys()].filter((k) => k !== "photo").map((k) => [k, k === "deliveryPrefs" || k === "courierPrefs" ? fd.getAll(k).map(String) : String(fd.get(k) ?? "").slice(0, 600)]));
+  const { v, photo, errors } = await readListingForm(fd);
+  if (!v.ok || Object.keys(errors).length) return { errors };
+  const l = await createListing(user.id, v.value, photo);
+  redirect(`/producer?done=created&id=${l.id}`);
+}
+
+/** 出品の入力を読み取り、確かめる（作成と編集で共通） */
+async function readListingForm(fd: FormData) {
+  const multi = ["deliveryPrefs", "courierPrefs", "deliveryWeekdays"];
+  const input = Object.fromEntries([...fd.keys()].filter((k) => k !== "photo").map((k) => [k, multi.includes(k) ? fd.getAll(k).map(String) : String(fd.get(k) ?? "").slice(0, 600)]));
   const v = validateListing(input, new Date());
   const errors: FieldErrors = v.ok ? {} : { ...v.errors };
   let photo: { mime: string; data: Buffer } | null = null;
@@ -36,9 +45,20 @@ export async function createListingAction(_: ListingState, fd: FormData): Promis
       else photo = { mime, data };
     }
   }
+  return { v, photo, errors };
+}
+
+/** 出品の編集（既存の注文の条件は変わらない） */
+export async function updateListingAction(_: ListingState, fd: FormData): Promise<ListingState> {
+  await connection();
+  const user = await requireRole("producer");
+  const id = z.string().uuid().safeParse(fd.get("id"));
+  if (!id.success) return { problem: "画面を開き直して、もう一度お試しください" };
+  const { v, photo, errors } = await readListingForm(fd);
   if (!v.ok || Object.keys(errors).length) return { errors };
-  const l = await createListing(user.id, v.value, photo);
-  redirect(`/producer?done=created&id=${l.id}`);
+  const r = await updateListing(user.id, id.data, v.value, photo);
+  if (!r.ok) return { errors: Object.fromEntries(Object.entries(r.errors).filter(([, m]) => !!m)) as FieldErrors };
+  redirect("/producer?done=updated");
 }
 
 const statusInput = z.object({ id: z.string().uuid(), to: z.enum(["open", "paused", "closed"]) });

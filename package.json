@@ -16,7 +16,9 @@
     "test:e2e": "node tests/e2e/run.mjs",
     "setup": "bash scripts/dev-setup.sh",
     "db:backup": "bash scripts/db-backup.sh",
-    "db:restore": "bash scripts/db-restore.sh"
+    "db:restore": "bash scripts/db-restore.sh",
+    "report:exposure": "node scripts/report-exposure.mjs",
+    "report:metrics": "node scripts/report-metrics.mjs"
   },
   "dependencies": {
     "@google/genai": "2.29.1",

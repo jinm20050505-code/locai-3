@@ -21,10 +21,11 @@ export function OrderButton({ orderId, act, text, kind = "primary", confirmText 
   );
 }
 
-export function ProposeForm({ orderId, currentKg, hint }: { orderId: string; currentKg: string; hint: string }) {
+export function ProposeForm({ orderId, currentKg, hint, needFee }: { orderId: string; currentKg: string; hint: string; needFee: boolean }) {
   const [state, action, pending] = useActionState<ActionState, FormData>(proposeAction, {});
   const [kg, setKg] = useState(currentKg);
   const [note, setNote] = useState("");
+  const [fee, setFee] = useState("");
   return (
     <form action={action} className="space-y-3">
       <input type="hidden" name="orderId" value={orderId} />
@@ -34,10 +35,14 @@ export function ProposeForm({ orderId, currentKg, hint }: { orderId: string; cur
         <input id="kg" name="kg" className={input} inputMode="decimal" value={kg} onChange={(e) => setKg(e.target.value)} />
       </div>
       <div>
+        <label htmlFor="fee" className={label}>{needFee ? "送料・配達料（円・必ず入れる）" : "送料・配達料を変える（円・変えないなら空のまま）"}</label>
+        <input id="fee" name="fee" className={input} inputMode="numeric" value={fee} onChange={(e) => setFee(e.target.value)} placeholder="例：800" />
+      </div>
+      <div>
         <label htmlFor="note" className={label}>ひとこと（あれば・200文字まで）</label>
         <input id="note" name="note" className={input} maxLength={200} value={note} onChange={(e) => setNote(e.target.value)} placeholder="例：今週は半分なら用意できます" />
       </div>
-      <button className={btn.secondary} disabled={pending}>{pending ? "送っています…" : "この数量で提案する"}</button>
+      <button className={btn.secondary} disabled={pending || (needFee && !fee.trim())}>{pending ? "送っています…" : "この条件で提案する"}</button>
       <Problems s={state} />
     </form>
   );

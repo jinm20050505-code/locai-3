@@ -5,7 +5,9 @@ import { OrderForm, type MethodOption } from "@/components/listing/order-form";
 import { ReportForm } from "@/components/wanted/forms";
 import { DemoBadge, LinkButton, Notice, card } from "@/components/ui";
 import { dayText, formatDateTime, formatDay } from "@/lib/dates";
-import { bandsOf, methodFee, TEMP_LABEL } from "@/lib/delivery";
+import { bandsOf, methodFee, TEMP_LABEL, WEEKDAY_LABEL } from "@/lib/delivery";
+import { ListingQuestion } from "@/components/listing/listing-question";
+import { buyerThread } from "@/server/threads";
 import { formatKg, formatYen, kgTextToGrams } from "@/lib/money";
 import { placeLabel, prefName } from "@/lib/regions";
 import { getCurrentUser } from "@/lib/session";
@@ -35,8 +37,9 @@ async function Detail({ params, searchParams }: { params: PageProps<"/listings/[
   const pref = user?.role === "buyer" ? user.prefecture : null;
   const grams0 = typeof sp.kg === "string" ? kgTextToGrams(sp.kg) : null;
   const methods: MethodOption[] = [];
-  if (l.courier) { const f = methodFee(l, "courier", pref, grams0 ?? l.minGrams); methods.push({ method: "courier", ok: f.ok || f.reason.includes("重さ"), reason: f.ok ? undefined : f.reason, bands, note: `${TEMP_LABEL[l.courierTemp ?? "normal"]}・発送から約${l.courierDays ?? 1}日で届きます` }); }
-  if (l.delivery) { const f = methodFee(l, "delivery", pref, l.minGrams); methods.push({ method: "delivery", ok: f.ok, reason: f.ok ? undefined : f.reason, feeYen: l.deliveryFeeYen ?? 0, note: `農家さんがお店まで届けます` }); }
+  const days = l.deliveryWeekdays.length ? `・${l.deliveryWeekdays.map((d) => WEEKDAY_LABEL[d]).join("・")}曜日` : "";
+  if (l.courier) { const f = methodFee(l, "courier", pref, grams0 ?? l.minGrams); methods.push({ method: "courier", ok: f.ok || f.reason.includes("重さ"), reason: f.ok ? undefined : f.reason, bands, quote: l.courierQuote, note: `${TEMP_LABEL[l.courierTemp ?? "normal"]}・発送から約${l.courierDays ?? 1}日で届きます` }); }
+  if (l.delivery) { const f = methodFee(l, "delivery", pref, l.minGrams); methods.push({ method: "delivery", ok: f.ok, reason: f.ok ? undefined : f.reason, feeYen: l.deliveryFeeYen ?? 0, quote: l.deliveryQuote, weekdays: l.deliveryWeekdays, note: `農家さんがお店まで届けます${days}` }); }
   if (l.pickup) methods.push({ method: "pickup", ok: true, feeYen: 0, note: `${placeLabel(l.pickupPref, l.pickupCity)}（くわしい場所は販売確定のあとにメッセージで）` });
   return (
     <div className="space-y-5">
@@ -78,8 +81,8 @@ async function Detail({ params, searchParams }: { params: PageProps<"/listings/[
           <dt>納品できる期間</dt><dd>{formatDay(l.availableFrom)}〜{formatDay(l.availableUntil)}</dd>
           <dt>購入希望の受付期限</dt><dd>{formatDateTime(l.acceptUntil)}</dd>
           <dt>生産者の回答期限</dt><dd>{formatDateTime(l.replyUntil)}</dd>
-          <dt>宅配発送</dt><dd>{l.courier ? `${courierText}（${TEMP_LABEL[l.courierTemp ?? "normal"]}・${l.courierPrefs.map(prefName).join("、")}）` : "していません"}</dd>
-          <dt>農家さんが配達</dt><dd>{l.delivery ? `配達料 ${formatYen(l.deliveryFeeYen ?? 0)}（${l.deliveryPrefs.map(prefName).join("、")}${l.deliveryMaxOrders ? `・${l.deliveryMaxOrders}件まで` : ""}）` : "していません"}</dd>
+          <dt>宅配発送</dt><dd>{l.courier ? `${l.courierQuote ? "送料は見積もり" : courierText}（${TEMP_LABEL[l.courierTemp ?? "normal"]}・${l.courierPrefs.map(prefName).join("、")}）` : "していません"}</dd>
+          <dt>農家さんが配達</dt><dd>{l.delivery ? `${l.deliveryQuote ? "配達料は見積もり" : `配達料 ${formatYen(l.deliveryFeeYen ?? 0)}`}（${l.deliveryPrefs.map(prefName).join("、")}${days}${l.deliveryMaxOrders ? `・${l.deliveryMaxOrders}件まで` : ""}）` : "していません"}</dd>
           <dt>畑で引き取り</dt><dd>{l.pickup ? `できます（${placeLabel(l.pickupPref, l.pickupCity)}・料金0円）` : "していません"}</dd>
         </dl>
       </section>
@@ -102,6 +105,7 @@ async function Detail({ params, searchParams }: { params: PageProps<"/listings/[
           />
         )}
       </section>
+      {user?.role === "buyer" && <ListingQuestion listingId={l.id} buyerId={user.id} messages={(await buyerThread(user.id, l.id)).map((m) => ({ id: m.id, body: m.body, at: formatDateTime(m.createdAt), mine: m.senderId === user.id }))} producerName={l.producer.name} />}
       {user && user.id !== l.producerId && <ReportForm type="listing" id={l.id} />}
     </div>
   );

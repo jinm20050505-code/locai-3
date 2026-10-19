@@ -4,9 +4,9 @@
 // 入力は手順を行き来しても残り、このブラウザに下書きとしても残る（次に開いたとき再開を聞く）。
 // サーバーのエラーは、その欄がある手順に戻って欄の近くに出す
 import { useActionState, useEffect, useRef, useState } from "react";
-import { createListingAction, previousAction, type ListingState } from "@/app/actions/listings";
+import { createListingAction, previousAction, updateListingAction, type ListingState } from "@/app/actions/listings";
 import { btn, Field, input, label, Notice } from "@/components/ui";
-import { METHOD_LABEL } from "@/lib/delivery";
+import { METHOD_LABEL, WEEKDAY_LABEL } from "@/lib/delivery";
 import { clearDraft, loadDraft, saveDraft } from "@/lib/draft";
 import { formatKg, formatYen, kgTextToGrams, subtotalYen, yenTextToInt } from "@/lib/money";
 import { SURPLUS_CHOICES, UNIT_CHOICES } from "@/lib/listing-rules";
@@ -45,7 +45,7 @@ function PrefChecks({ value, onChange, title, error }: { value: string; onChange
   );
 }
 
-export function ListingWizard({ initial, fresh }: { initial: WizardValues; fresh: boolean }) {
+export function ListingWizard({ initial, fresh, editId }: { initial: WizardValues; fresh: boolean; editId?: string }) {
   const [v, setV] = useState<WizardValues>(initial);
   const [resume, setResume] = useState<WizardValues | null>(null);
   const [step, setStep] = useState(0);
@@ -53,7 +53,7 @@ export function ListingWizard({ initial, fresh }: { initial: WizardValues; fresh
   const [preview, setPreview] = useState<string | null>(null);
   const [photoError, setPhotoError] = useState("");
   const [prev, setPrev] = useState<{ pricePerKg: number; totalGrams: number } | null>(null);
-  const [state, action, pending] = useActionState<ListingState, FormData>(createListingAction, {});
+  const [state, action, pending] = useActionState<ListingState, FormData>(editId ? updateListingAction : createListingAction, {});
   const e = state.errors ?? {};
   const top = useRef<HTMLDivElement>(null);
   const set = (k: string) => (ev: { target: { value: string } }) => setV((x) => ({ ...x, [k]: ev.target.value }));
@@ -77,8 +77,8 @@ export function ListingWizard({ initial, fresh }: { initial: WizardValues; fresh
     if (d && d.name) setResume(d);
   }, [fresh]);
   useEffect(() => {
-    if (!resume && v.name) saveDraft(KEY, v);
-  }, [v, resume]);
+    if (!resume && v.name && !editId) saveDraft(KEY, v);
+  }, [v, resume, editId]);
   // 確認の手順に入ったら、同じ食材の前回の値を取り直す
   useEffect(() => {
     if (step === 3) previousAction(v.name).then(setPrev).catch(() => setPrev(null));
@@ -91,11 +91,13 @@ export function ListingWizard({ initial, fresh }: { initial: WizardValues; fresh
   const far = (a: number | null, b: number) => !!a && (a > b * 1.5 || a < b * 0.5);
 
   const submit = (fd: FormData) => {
-    for (const [k, val] of Object.entries(v)) if (k !== "deliveryPrefs" && k !== "courierPrefs") fd.set(k, val);
+    for (const [k, val] of Object.entries(v)) if (k !== "deliveryPrefs" && k !== "courierPrefs" && k !== "deliveryWeekdays") fd.set(k, val);
+    (v.deliveryWeekdays ? v.deliveryWeekdays.split(",") : []).filter(Boolean).forEach((d) => fd.append("deliveryWeekdays", d));
+    if (editId) fd.set("id", editId);
     (v.deliveryPrefs ? v.deliveryPrefs.split(",") : []).forEach((p) => fd.append("deliveryPrefs", p));
     (v.courierPrefs ? v.courierPrefs.split(",") : []).forEach((p) => fd.append("courierPrefs", p));
     if (photo) fd.set("photo", new File([photo], "photo.jpg", { type: "image/jpeg" }));
-    clearDraft(KEY);
+    if (!editId) clearDraft(KEY);
     return action(fd);
   };
 
@@ -209,8 +211,9 @@ export function ListingWizard({ initial, fresh }: { initial: WizardValues; fresh
             <label className="flex min-h-12 items-center gap-3 rounded-xl border-2 border-line px-4"><input type="checkbox" checked={v.courier === "on"} onChange={check("courier")} className="h-6 w-6 accent-brand-strong" /> {METHOD_LABEL.courier}（注文ごとに梱包して送る）</label>
             {v.courier === "on" && (
               <div className="ml-2 space-y-3 border-l-4 border-brand pl-3">
-                <p className="text-lg font-bold">送料（重さごと・1回の注文あたり）</p>
-                {[1, 2, 3].map((i) => (
+                <label className="flex min-h-12 items-center gap-3 rounded-xl border-2 border-line px-4"><input type="checkbox" checked={v.courierQuote === "on"} onChange={check("courierQuote")} className="h-6 w-6 accent-brand-strong" /> 送料が分からないので、注文ごとに見積もる</label>
+                {v.courierQuote !== "on" && <p className="text-lg font-bold">送料（重さごと・1回の注文あたり）</p>}
+                {v.courierQuote !== "on" && [1, 2, 3].map((i) => (
                   <div key={i} className="grid grid-cols-2 gap-2">
                     <input aria-label={`送料${i}段目の重さ（kg まで）`} className={input} inputMode="decimal" placeholder={i === 1 ? "例：5（kg まで）" : "kg まで（任意）"} value={v[`band${i}Kg`] ?? ""} onChange={set(`band${i}Kg`)} />
                     <input aria-label={`送料${i}段目の金額（円）`} className={input} inputMode="numeric" placeholder={i === 1 ? "例：900（円）" : "円（任意）"} value={v[`band${i}Fee`] ?? ""} onChange={set(`band${i}Fee`)} />
@@ -231,7 +234,21 @@ export function ListingWizard({ initial, fresh }: { initial: WizardValues; fresh
             <label className="flex min-h-12 items-center gap-3 rounded-xl border-2 border-line px-4"><input type="checkbox" checked={v.delivery === "on"} onChange={check("delivery")} className="h-6 w-6 accent-brand-strong" /> {METHOD_LABEL.delivery}（自分で届ける）</label>
             {v.delivery === "on" && (
               <div className="ml-2 space-y-3 border-l-4 border-brand pl-3">
-                <Field id="deliveryFeeYen" title="配達料（1回の注文あたり・円）" hint="無料なら 0" error={e.deliveryFeeYen}><input id="deliveryFeeYen" className={input} inputMode="numeric" value={v.deliveryFeeYen ?? ""} onChange={set("deliveryFeeYen")} /></Field>
+                <label className="flex min-h-12 items-center gap-3 rounded-xl border-2 border-line px-4"><input type="checkbox" checked={v.deliveryQuote === "on"} onChange={check("deliveryQuote")} className="h-6 w-6 accent-brand-strong" /> 配達料が分からないので、注文ごとに見積もる</label>
+                {v.deliveryQuote !== "on" && <Field id="deliveryFeeYen" title="配達料（1回の注文あたり・円）" hint="無料なら 0" error={e.deliveryFeeYen}><input id="deliveryFeeYen" className={input} inputMode="numeric" value={v.deliveryFeeYen ?? ""} onChange={set("deliveryFeeYen")} /></Field>}
+                <fieldset>
+                  <legend className="text-lg font-bold">配達できる曜日（選ばなければ、どの曜日でも）</legend>
+                  <div className="mt-1 grid grid-cols-4 gap-2 sm:grid-cols-7">
+                    {WEEKDAY_LABEL.map((w, i) => {
+                      const list = (v.deliveryWeekdays ?? "").split(",").filter(Boolean);
+                      return (
+                        <label key={w} className="flex min-h-12 items-center justify-center gap-1 rounded-xl border-2 border-line">
+                          <input type="checkbox" checked={list.includes(String(i))} onChange={(ev) => setV((x) => ({ ...x, deliveryWeekdays: (ev.target.checked ? [...list, String(i)] : list.filter((d) => d !== String(i))).join(",") }))} className="h-5 w-5 accent-brand-strong" /> {w}
+                        </label>
+                      );
+                    })}
+                  </div>
+                </fieldset>
                 <Field id="deliveryMaxOrders" title="受けられる件数（任意）" hint="上限がなければ空のまま" error={e.deliveryMaxOrders}><input id="deliveryMaxOrders" className={input} inputMode="numeric" value={v.deliveryMaxOrders ?? ""} onChange={set("deliveryMaxOrders")} /></Field>
                 <PrefChecks title="配達できる府県" value={v.deliveryPrefs ?? ""} onChange={(x) => setV((y) => ({ ...y, deliveryPrefs: x }))} error={e.deliveryPrefs} />
               </div>
@@ -260,7 +277,8 @@ export function ListingWizard({ initial, fresh }: { initial: WizardValues; fresh
 
       {step === 3 && (
         <form action={submit} className="space-y-5">
-          <h2 className="text-xl font-bold">この内容で出品します</h2>
+          <h2 className="text-xl font-bold">{editId ? "この内容に変えます" : "この内容で出品します"}</h2>
+          {editId && <Notice title="すでに届いている購入希望の条件は変わりません">回答待ちや販売確定の注文は、申し込んだときの値段・数量・送料のままです。</Notice>}
           {prev && (far(price, prev.pricePerKg) || far(grams, prev.totalGrams)) && (
             <Notice kind="warn" title="前回の出品と大きく違います。確認してください">
               {far(price, prev.pricePerKg) && <p>値段：前回は 1kg {formatYen(prev.pricePerKg)}、今回は 1kg {formatYen(price!)}</p>}
@@ -278,15 +296,15 @@ export function ListingWizard({ initial, fresh }: { initial: WizardValues; fresh
             <dt className="font-bold">期限</dt><dd>受付 {v.acceptUntil?.replace("T", " ").replaceAll("-", "/")}／回答 {v.replyUntil?.replace("T", " ").replaceAll("-", "/")}</dd>
             <dt className="font-bold">受け渡し</dt>
             <dd>
-              {v.courier === "on" && <>宅配発送（{[1, 2, 3].filter((i) => v[`band${i}Kg`]).map((i) => `${v[`band${i}Kg`]}kgまで${v[`band${i}Fee`]}円`).join("・")}・{v.courierTemp === "chilled" ? "冷蔵" : "常温"}・{(v.courierPrefs ?? "").split(",").filter(Boolean).map(prefName).join("、")}）<br /></>}
-              {v.delivery === "on" && <>配達（配達料 {v.deliveryFeeYen}円・{(v.deliveryPrefs ?? "").split(",").filter(Boolean).map(prefName).join("、")}{v.deliveryMaxOrders ? `・${v.deliveryMaxOrders}件まで` : ""}）<br /></>}
+              {v.courier === "on" && <>宅配発送（{v.courierQuote === "on" ? "送料は見積もり" : [1, 2, 3].filter((i) => v[`band${i}Kg`]).map((i) => `${v[`band${i}Kg`]}kgまで${v[`band${i}Fee`]}円`).join("・")}・{v.courierTemp === "chilled" ? "冷蔵" : "常温"}・{(v.courierPrefs ?? "").split(",").filter(Boolean).map(prefName).join("、")}）<br /></>}
+              {v.delivery === "on" && <>配達（{v.deliveryQuote === "on" ? "配達料は見積もり" : `配達料 ${v.deliveryFeeYen}円`}・{(v.deliveryWeekdays ?? "").split(",").filter(Boolean).map((d) => WEEKDAY_LABEL[Number(d)]).join("・") || "毎日"}・{(v.deliveryPrefs ?? "").split(",").filter(Boolean).map(prefName).join("、")}{v.deliveryMaxOrders ? `・${v.deliveryMaxOrders}件まで` : ""}）<br /></>}
               {v.pickup === "on" && <>引き取り（{prefName(v.pickupPref)} {v.pickupCity}）</>}
             </dd>
           </dl>
           <p className="text-base text-sub">出品すると、お店の候補に表示されます。購入希望が届いたら、「全件承認」か「注文ごとに承認・見送り」を選べます。全量がそろわなくても承認できます。</p>
           {Object.keys(e).length > 0 && <Notice kind="warn" title="直してほしいところがあります">前の手順の欄の近くに、理由を出しています。</Notice>}
           {state.problem && <Notice kind="warn" title={state.problem} />}
-          <button className={btn.primary} disabled={pending}>{pending ? "出品しています…" : "出品する"}</button>
+          <button className={btn.primary} disabled={pending}>{pending ? "保存しています…" : editId ? "変更を保存する" : "出品する"}</button>
           <button type="button" className={btn.plain} onClick={() => setStep(2)} disabled={pending}>戻って直す</button>
         </form>
       )}

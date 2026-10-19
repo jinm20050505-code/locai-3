@@ -4,6 +4,10 @@ import { afterAll, beforeAll, describe, expect, it } from "vitest";
 import { getDb } from "@/lib/db";
 import { stockOf } from "@/lib/order-rules";
 import { search } from "@/server/search";
+import { updateListing } from "@/server/listings";
+import { buyerThread, postListingMessage, producerThreads } from "@/server/threads";
+import { validateListing } from "@/lib/listing-rules";
+import { dayText, toJstInput } from "@/lib/dates";
 import { createWanted, listOpenWanted, validateWanted } from "@/server/wanted";
 import { acceptChange, applyOrder, approveAll, approveOrder, cancelOrder, declineOrder, getOrderForParty, proposeChange, sendMessage } from "@/server/orders";
 
@@ -43,6 +47,7 @@ beforeAll(async () => {
 afterAll(async () => {
   await db.impression.deleteMany({ where: { producerId: { in: users } } });
   await db.message.deleteMany({ where: { senderId: { in: users } } });
+  await db.listingMessage.deleteMany({ where: { senderId: { in: users } } });
   await db.order.deleteMany({ where: { buyerId: { in: users } } });
   await db.listing.deleteMany({ where: { producerId: { in: users } } });
   await db.user.deleteMany({ where: { id: { in: users } } });
@@ -244,6 +249,61 @@ describe("仕様の追加の決まり", () => {
     await db.impression.createMany({ data: Array.from({ length: 20 }, () => ({ listingId: b1.id, producerId: farmB, grp: "match", position: 0 })) });
     const r2 = await search(input, viewer, new Date());
     expect(r2.groups.match.shown[0].producerId).toBe(farmC);
+  });
+});
+
+describe("見積相談・出品の編集・配達日・出品への相談", () => {
+  it("見積相談：送料が分からない注文は承認できず、生産者が送料を提示して店が同意したときに販売確定", async () => {
+    const l = await mkListing(producer);
+    await db.listing.update({ where: { id: l.id }, data: { deliveryQuote: true, deliveryFeeYen: null } });
+    const b = await mkUser("buyer");
+    const r = (await applyOrder(b, { listingId: l.id, grams: 2000, method: "delivery", useDate: dayAfter2(), requestId: randomUUID() })) as { id: string };
+    let o = await db.order.findUniqueOrThrow({ where: { id: r.id } });
+    expect([o.feePending, o.feeYen, o.totalYen, o.heldGrams]).toEqual([true, 0, 666, 2000]);
+    expect((await approveOrder(producer, r.id)).ok).toBe(false);
+    expect((await proposeChange(producer, r.id, 2000, "", new Date(), null)).ok).toBe(false); // 送料なしの提案はできない
+    expect((await proposeChange(producer, r.id, 2000, "送料は900円です", new Date(), 900)).ok).toBe(true);
+    expect((await acceptChange(b, r.id)).ok).toBe(true);
+    o = await db.order.findUniqueOrThrow({ where: { id: r.id } });
+    expect([o.status, o.feePending, o.feeYen, o.totalYen]).toEqual(["confirmed", false, 900, 1566]);
+  });
+  it("出品を編集しても既存の注文の条件は変わらず、総量は販売確定と仮押さえの合計より減らせない", async () => {
+    const l = await mkListing(producer, { totalGrams: 10_000 });
+    const b = await mkUser("buyer");
+    const r = (await applyOrder(b, { listingId: l.id, grams: 4000, method: "pickup", useDate: dayAfter2(), requestId: randomUUID() })) as { id: string };
+    const base = { name: l.name, totalKg: "10", pricePerKg: "999", unitGrams: "500", minKg: "1", availableFrom: dayText(l.availableFrom), availableUntil: dayText(l.availableUntil), acceptUntil: toJstInput(l.acceptUntil), replyUntil: toJstInput(l.replyUntil), pickup: "on", pickupPref: "26", pickupCity: "南丹市" };
+    const v = validateListing(base, new Date());
+    expect(v.ok).toBe(true);
+    if (!v.ok) return;
+    expect((await updateListing(producer, l.id, v.value, null)).ok).toBe(true);
+    const o = await db.order.findUniqueOrThrow({ where: { id: r.id } });
+    expect([o.pricePerKg, o.subtotalYen]).toEqual([333, 1332]); // 申し込んだときの値段のまま
+    const small = validateListing({ ...base, totalKg: "3" }, new Date());
+    if (!small.ok) return;
+    expect((await updateListing(producer, l.id, small.value, null)).ok).toBe(false);
+    const other = await mkUser("producer");
+    expect((await updateListing(other, l.id, v.value, null)).ok).toBe(false); // 他人の出品は編集できない
+  });
+  it("自分で配達は、配達できる曜日の日だけ申し込める", async () => {
+    const l = await mkListing(producer);
+    const day = dayAfter2();
+    await db.listing.update({ where: { id: l.id }, data: { deliveryWeekdays: [(day.getUTCDay() + 1) % 7] } });
+    const b = await mkUser("buyer");
+    expect((await applyOrder(b, { listingId: l.id, grams: 1000, method: "delivery", useDate: day, requestId: randomUUID() })).ok).toBe(false);
+    await db.listing.update({ where: { id: l.id }, data: { deliveryWeekdays: [day.getUTCDay()] } });
+    expect((await applyOrder(b, { listingId: l.id, grams: 1000, method: "delivery", useDate: day, requestId: randomUUID() })).ok).toBe(true);
+  });
+  it("出品への相談は、その店と生産者の2人だけ。ほかの店や生産者は読めない・書けない", async () => {
+    const l = await mkListing(producer);
+    const b = await mkUser("buyer"), c = await mkUser("buyer"), p2 = await mkUser("producer");
+    expect((await postListingMessage(b, l.id, b, "何時に届きますか", randomUUID())).ok).toBe(true);
+    expect((await postListingMessage(c, l.id, b, "なりすまし", randomUUID())).ok).toBe(false);
+    expect((await postListingMessage(p2, l.id, b, "他人の出品", randomUUID())).ok).toBe(false);
+    expect((await postListingMessage(producer, l.id, b, "朝9時です", randomUUID())).ok).toBe(true);
+    expect((await buyerThread(b, l.id)).map((m) => m.body)).toEqual(["何時に届きますか", "朝9時です"]);
+    expect(await buyerThread(c, l.id)).toEqual([]);
+    expect(await producerThreads(p2, l.id)).toBeNull();
+    expect((await producerThreads(producer, l.id))!.threads).toHaveLength(1);
   });
 });
 

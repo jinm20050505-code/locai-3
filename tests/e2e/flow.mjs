@@ -146,10 +146,10 @@ try {
   };
   const O2 = await apply("4kg（商品代 2,400円）");
   await pp.goto(`${B}/orders/${O2}`);
-  await pp.getByText("数量を変えて提案する").click();
+  await pp.getByText("条件を変えて提案する（数量・送料）").click();
   await pp.getByLabel(/提案する数量/).fill("2");
   await pp.getByLabel(/ひとこと/).fill("今週は2kgなら用意できます（架空）");
-  await pp.getByRole("button", { name: "この数量で提案する" }).click();
+  await pp.getByRole("button", { name: "この条件で提案する" }).click();
   await pp.waitForURL(/done=proposed/);
   await bp.goto(`${B}/orders/${O2}`);
   await bp.getByText("農家さんからの変更の提案").waitFor();
@@ -186,6 +186,60 @@ try {
   await bp.goto(`${B}/orders`);
   await bp.getByRole("heading", { name: /今週の確保済み食材/ }).waitFor();
   ok("お店：「今週の確保済み食材」に販売確定した食材が出る", (await bp.getByRole("region", { name: /今週の確保済み食材/ }).innerText()).includes(ITEM));
+
+  // ---- 出品の編集：値段を変え、配達（配達料は見積もり）を加える。既存の注文の値段は変わらない
+  await pp.goto(`${B}/producer`);
+  await pp.getByRole("link", { name: "出品を編集する" }).first().click();
+  await pp.waitForURL(/\/edit$/);
+  await pp.getByRole("button", { name: "次へ（量と値段）" }).click();
+  await pp.getByLabel(/1kg あたりの値段/).fill("650");
+  await pp.getByRole("button", { name: "次へ（期限と受け渡し）" }).click();
+  await pp.getByLabel(/農家さんが配達（自分で届ける）/).check();
+  await pp.getByLabel("配達料が分からないので、注文ごとに見積もる").check();
+  await pp.getByRole("group", { name: "配達できる府県" }).getByLabel("大阪府").check();
+  await pp.getByRole("button", { name: "次へ（確認）" }).click();
+  await pp.getByText("すでに届いている購入希望の条件は変わりません").first().waitFor();
+  await pp.getByRole("button", { name: "変更を保存する" }).click();
+  await pp.waitForURL(/done=updated/);
+  const kept = (await db.query(`SELECT "pricePerKg" FROM "order" WHERE id = $1`, [O1])).rows[0].pricePerKg;
+  ok("出品を編集しても、既存の注文の値段は申し込んだときのまま（600円）", kept === 600 && (await db.query(`SELECT "pricePerKg" FROM listing WHERE id = $1`, [L.id])).rows[0].pricePerKg === 650);
+
+  // ---- 出品への相談：お店が質問 → 農家さんが返信 → お店に届く
+  await bp.goto(`${B}/listings/${L.id}`);
+  await bp.getByText(/この出品について農家さんに相談する/).click();
+  await bp.getByLabel("相談を書く（500文字まで）").fill("葉っぱも付いていますか（架空）");
+  await bp.getByRole("button", { name: "送る" }).click();
+  await main(bp).getByText("葉っぱも付いていますか（架空）").waitFor();
+  await pp.goto(`${B}/producer/listings/${L.id}/messages`);
+  await pp.getByText("葉っぱも付いていますか（架空）").waitFor();
+  await pp.getByLabel("返信を書く（500文字まで）").fill("付いています（架空）");
+  await pp.getByRole("button", { name: "送る" }).click();
+  await main(pp).getByText("付いています（架空）").waitFor();
+  await bp.goto(`${B}/listings/${L.id}`);
+  await main(bp).getByText("付いています（架空）").waitFor().catch(() => {});
+  ok("出品への相談：お店の質問に農家さんが返信でき、お店の画面に出る", (await main(bp).innerText()).includes("付いています（架空）"));
+
+  // ---- 見積相談：配達料が見積もりの購入希望 → 農家さんが送料を提示 → お店が同意して販売確定
+  await bp.goto(`${B}/listings/${L.id}`);
+  await bp.getByLabel("希望数量", { exact: true }).selectOption({ label: "1kg（商品代 650円）" });
+  await bp.getByLabel(/農家さんが配達/).check();
+  ok("見積もりの方法を選ぶと、合計は「未確定」と出る", (await main(bp).innerText()).includes("未確定（送料は見積もり）"));
+  await bp.getByRole("button", { name: "内容を確認する" }).click();
+  await bp.getByText("送料・配達料は見積もりです").waitFor();
+  await bp.getByRole("button", { name: "購入希望を送る" }).click();
+  await bp.waitForURL(/done=sent/);
+  const OQ = new URL(bp.url()).pathname.split("/").pop();
+  await pp.goto(`${B}/orders/${OQ}`);
+  await pp.getByText("送料を決めて提案する").waitFor();
+  ok("見積もりの注文には「承認する」が出ず、送料を決めて提案する", (await pp.getByRole("button", { name: "承認する（販売確定）" }).count()) === 0);
+  await pp.getByLabel(/送料・配達料（円・必ず入れる）/).fill("900");
+  await pp.getByRole("button", { name: "この条件で提案する" }).click();
+  await pp.waitForURL(/done=proposed/);
+  await bp.goto(`${B}/orders/${OQ}`);
+  await bp.getByRole("button", { name: "この変更に同意する（販売確定）" }).click();
+  await bp.waitForURL(/done=accepted/);
+  const q = (await db.query(`SELECT status, "feeYen", "totalYen", "feePending" FROM "order" WHERE id = $1`, [OQ])).rows[0];
+  ok("見積相談：お店が総額に同意すると販売確定（商品代650円＋送料900円＝1,550円）", q.status === "confirmed" && q.feeYen === 900 && q.totalYen === 1550 && !q.feePending);
 
   // ---- 前回の条件（ワンタップ）
   await bp.goto(`${B}/search`);
@@ -258,6 +312,7 @@ try {
   // 作った架空のデータを消す
   const ids = (await db.query(`SELECT id FROM "user" WHERE name LIKE $1`, [`%${stamp}（架空）`])).rows.map((r) => r.id);
   await db.query(`DELETE FROM "message" WHERE "senderId" = ANY($1)`, [ids]);
+  await db.query(`DELETE FROM "listing_message" WHERE "senderId" = ANY($1)`, [ids]);
   await db.query(`DELETE FROM "order" WHERE "buyerId" = ANY($1) OR "producerId" = ANY($1)`, [ids]);
   await db.query(`DELETE FROM "impression" WHERE "producerId" = ANY($1)`, [ids]);
   await db.query(`DELETE FROM "listing" WHERE "producerId" = ANY($1)`, [ids]);

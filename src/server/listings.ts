@@ -56,3 +56,25 @@ export async function weeklyImpressions(producerId: string, now: Date) {
   const rows = await getDb().impression.groupBy({ by: ["listingId"], where: { producerId, createdAt: { gt: new Date(now.getTime() - 7 * 86_400_000) } }, _count: true });
   return new Map(rows.map((r) => [r.listingId, r._count]));
 }
+
+/**
+ * 出品の編集（自分の出品・受付終了の前だけ）。仕様「回答待ちの注文がある出品の条件を変更しても、既存の注文の条件は保持する」：
+ * 注文は申し込んだときの値段・数量・料金を持っているので、出品を変えても注文は変わらない。
+ * 総量は、販売確定と仮押さえの合計より少なくできない（売りすぎない）
+ */
+export async function updateListing(producerId: string, id: string, v: ListingValue, photo: { mime: string; data: Buffer } | null, now = new Date()) {
+  const db = getDb();
+  return db.$transaction(async (tx) => {
+    await tx.$queryRaw`SELECT id FROM "listing" WHERE id = ${id} FOR UPDATE`;
+    const l = await tx.listing.findFirst({ where: { id, producerId }, include: { orders: STOCK_ORDERS } });
+    if (!l) return { ok: false as const, errors: { name: "出品が見つかりません" } };
+    if (l.status === "closed") return { ok: false as const, errors: { name: "受付を終了した出品は編集できません。「前回の内容でもう一度出品」を使ってください" } };
+    const s = stockOf(l.totalGrams, l.orders, now);
+    if (v.totalGrams < s.soldGrams + s.heldGrams) return { ok: false as const, errors: { totalKg: `販売確定と回答待ちの合計（${(s.soldGrams + s.heldGrams) / 1000}kg）より少なくはできません` } };
+    const { courierFees, wantedPostId: _w, ...rest } = v;
+    void _w;
+    await tx.listing.update({ where: { id }, data: { ...rest, courierFees: courierFees ?? undefined } });
+    if (photo) await tx.listingPhoto.upsert({ where: { listingId: id }, create: { listingId: id, mime: photo.mime, data: new Uint8Array(photo.data) }, update: { mime: photo.mime, data: new Uint8Array(photo.data) } });
+    return { ok: true as const };
+  });
+}

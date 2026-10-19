@@ -24,7 +24,7 @@ export async function applyAction(_: ActionState, fd: FormData): Promise<ActionS
   const useDate = parseDay(get(fd, "useDate"));
   if (!uuid.safeParse(listingId).success || !uuid.safeParse(requestId).success || !Number.isInteger(grams)) return bad;
   if (!useDate) return { problems: ["受け取る日を選んでください"] };
-  const r = await applyOrder(user.id, { listingId, grams, method: get(fd, "method"), useDate, requestId });
+  const r = await applyOrder(user.id, { listingId, grams, method: get(fd, "method"), useDate, requestId, receiveSlot: get(fd, "receiveSlot") || null });
   if (!r.ok) return { problems: r.problems };
   redirect(`/orders/${r.id}?done=sent`);
 }
@@ -51,7 +51,10 @@ export async function proposeAction(_: ActionState, fd: FormData): Promise<Actio
   const grams = kgTextToGrams(get(fd, "kg"));
   if (!uuid.safeParse(id).success) return bad;
   if (grams === null) return { problems: ["提案する数量を kg で入れてください（例：2.5）"] };
-  const r = await proposeChange(user.id, id, grams, get(fd, "note").trim());
+  const feeText = get(fd, "fee").trim();
+  const fee = feeText === "" ? null : /^\d{1,6}$/.test(feeText.replace(/[,円]/g, "")) ? Number(feeText.replace(/[,円]/g, "")) : NaN;
+  if (Number.isNaN(fee)) return { problems: ["送料は円の数字で入れてください（例：800）"] };
+  const r = await proposeChange(user.id, id, grams, get(fd, "note").trim(), new Date(), fee);
   if (!r.ok) return { problems: r.problems };
   redirect(`/orders/${id}?done=proposed`);
 }

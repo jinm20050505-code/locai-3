@@ -15,8 +15,8 @@ export type ListingValue = {
   totalGrams: number; minGrams: number; unitGrams: number; pricePerKg: number; allowPartial: boolean;
   availableFrom: Date; availableUntil: Date; acceptUntil: Date; replyUntil: Date;
   pickup: boolean; pickupPref: string | null; pickupCity: string | null;
-  delivery: boolean; deliveryFeeYen: number | null; deliveryPrefs: string[]; deliveryMaxOrders: number | null;
-  courier: boolean; courierPrefs: string[]; courierFees: FeeBand[] | null; courierTemp: string | null; courierDays: number | null;
+  delivery: boolean; deliveryFeeYen: number | null; deliveryPrefs: string[]; deliveryMaxOrders: number | null; deliveryQuote: boolean; deliveryWeekdays: number[];
+  courier: boolean; courierPrefs: string[]; courierFees: FeeBand[] | null; courierTemp: string | null; courierDays: number | null; courierQuote: boolean;
   wantedPostId: string | null;
 };
 export type FieldErrors = Record<string, string>;
@@ -81,10 +81,14 @@ export function validateListing(input: ListingInput, now: Date): { ok: true; val
   if (pickup && !isPlace(pickupPref, pickupCity)) e.pickupPlace = "引き取りの場所（府県と市区町村）を選んでください";
   let deliveryFeeYen: number | null = null, deliveryMaxOrders: number | null = null;
   const deliveryPrefs = prefsOf(input.deliveryPrefs);
+  const deliveryQuote = delivery && str(input.deliveryQuote) === "on";
+  const deliveryWeekdays = delivery ? [...new Set(arr(input.deliveryWeekdays).map(Number).filter((n) => Number.isInteger(n) && n >= 0 && n <= 6))].sort() : [];
   if (delivery) {
-    deliveryFeeYen = yenTextToInt(str(input.deliveryFeeYen));
-    if (deliveryFeeYen === null) e.deliveryFeeYen = "配達料を円で入れてください（無料なら 0）";
-    else if (deliveryFeeYen > LIMITS.maxFeeYen) e.deliveryFeeYen = "配達料は 50,000円 までです";
+    if (!deliveryQuote) {
+      deliveryFeeYen = yenTextToInt(str(input.deliveryFeeYen));
+      if (deliveryFeeYen === null) e.deliveryFeeYen = "配達料を円で入れてください（無料なら 0。分からなければ「見積もる」を選ぶ）";
+      else if (deliveryFeeYen > LIMITS.maxFeeYen) e.deliveryFeeYen = "配達料は 50,000円 までです";
+    }
     if (deliveryPrefs.length === 0) e.deliveryPrefs = "配達できる府県を1つ以上選んでください";
     const m = str(input.deliveryMaxOrders);
     if (m) {
@@ -94,6 +98,7 @@ export function validateListing(input: ListingInput, now: Date): { ok: true; val
   }
   const courierPrefs = prefsOf(input.courierPrefs);
   let courierFees: FeeBand[] | null = null, courierTemp: string | null = null, courierDays: number | null = null;
+  const courierQuote = courier && str(input.courierQuote) === "on";
   if (courier) {
     if (courierPrefs.length === 0) e.courierPrefs = "宅配発送できる府県を1つ以上選んでください";
     const bands: FeeBand[] = [];
@@ -104,8 +109,8 @@ export function validateListing(input: ListingInput, now: Date): { ok: true; val
       if (!g || y === null || y > LIMITS.maxFeeYen) { e.courierFees = `送料の${i}段目を直してください（重さは kg、送料は円の数字）`; break; }
       bands.push({ upToGrams: g, feeYen: y });
     }
-    if (!e.courierFees && bands.length === 0) e.courierFees = "送料を1段以上入れてください（例：5kg まで 900円）";
-    courierFees = bands.sort((a, b) => a.upToGrams - b.upToGrams);
+    if (!e.courierFees && bands.length === 0 && !courierQuote) e.courierFees = "送料を1段以上入れてください（例：5kg まで 900円）。分からなければ「見積もる」を選ぶ";
+    courierFees = courierQuote ? null : bands.sort((a, b) => a.upToGrams - b.upToGrams);
     courierTemp = str(input.courierTemp) === "chilled" ? "chilled" : "normal";
     const d = str(input.courierDays);
     courierDays = /^\d$/.test(d) ? Number(d) : null;
@@ -120,8 +125,8 @@ export function validateListing(input: ListingInput, now: Date): { ok: true; val
       totalGrams: totalGrams!, minGrams, unitGrams, pricePerKg: pricePerKg!, allowPartial,
       availableFrom: availableFrom!, availableUntil: availableUntil!, acceptUntil: acceptUntil!, replyUntil: replyUntil!,
       pickup, pickupPref: pickup ? pickupPref : null, pickupCity: pickup ? pickupCity : null,
-      delivery, deliveryFeeYen: delivery ? deliveryFeeYen : null, deliveryPrefs: delivery ? deliveryPrefs : [], deliveryMaxOrders: delivery ? deliveryMaxOrders : null,
-      courier, courierPrefs: courier ? courierPrefs : [], courierFees: courier ? courierFees : null, courierTemp, courierDays,
+      delivery, deliveryFeeYen: delivery ? deliveryFeeYen : null, deliveryPrefs: delivery ? deliveryPrefs : [], deliveryMaxOrders: delivery ? deliveryMaxOrders : null, deliveryQuote, deliveryWeekdays,
+      courier, courierPrefs: courier ? courierPrefs : [], courierFees: courier ? courierFees : null, courierTemp, courierDays, courierQuote,
       wantedPostId,
     },
   };

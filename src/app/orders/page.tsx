@@ -14,7 +14,7 @@ const RANK: Record<string, number> = { changeRequested: 0, pending: 1, confirmed
 export default function BuyerOrders() {
   return (
     <main className="space-y-5">
-      <h1 className="text-2xl font-bold">注文の状況</h1>
+      <h1 className="text-2xl font-bold">マイページ（注文の状況）</h1>
       <Suspense fallback={<p>読み込んでいます…</p>}>
         <List />
       </Suspense>

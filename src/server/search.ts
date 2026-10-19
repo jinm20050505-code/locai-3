@@ -8,7 +8,7 @@ import { createHash } from "node:crypto";
 import { sameGroup } from "@/lib/alternatives";
 import { todayText } from "@/lib/dates";
 import { getDb } from "@/lib/db";
-import { methodFee, type Method } from "@/lib/delivery";
+import { deliveryDayOk, methodFee, type Method } from "@/lib/delivery";
 import { matches, searchTerms } from "@/lib/kana";
 import { subtotalYen } from "@/lib/money";
 import { quantityProblem, stockOf } from "@/lib/order-rules";
@@ -50,12 +50,18 @@ export async function search(input: SearchInput, viewerId: string | null, now: D
     else if (quantityProblem(input.grams, l)) reasons.push(l.allowPartial ? "販売単位に合わない" : "全量での購入だけ");
     if (input.useDate < l.availableFrom) reasons.push("使用日までに納品できない");
     const options = input.methods.map((m) => ({ m, f: methodFee(l, m, input.pref, input.grams) }));
-    const okOptions = options.filter((o) => o.f.ok).map((o) => ({ method: o.m, feeYen: (o.f as { feeYen: number }).feeYen, arrives: o.m === "courier" ? new Date(l.availableFrom.getTime() + (l.courierDays ?? 1) * DAY) : l.availableFrom }));
+    // 自分で配達：配達できる曜日のうち、いちばん早い日（使用日まで・納品期間の中）
+    const firstDeliveryDay = () => {
+      for (let d = l.availableFrom.getTime(); d <= Math.min(input.useDate.getTime(), l.availableUntil.getTime()); d += DAY) if (deliveryDayOk(l.deliveryWeekdays, new Date(d))) return new Date(d);
+      return new Date(input.useDate.getTime() + DAY); // 使用日までに配達できる日がない
+    };
+    const okOptions = options.filter((o) => o.f.ok).map((o) => ({ method: o.m, feeYen: (o.f as { feeYen: number }).feeYen, quote: (o.f as { quote: boolean }).quote, arrives: o.m === "courier" ? new Date(l.availableFrom.getTime() + (l.courierDays ?? 1) * DAY) : o.m === "delivery" ? firstDeliveryDay() : l.availableFrom }));
     const usable = okOptions.filter((o) => o.arrives <= input.useDate);
     if (okOptions.length === 0) reasons.push("受け取り方法・地域が合わない");
     else if (usable.length === 0 && !reasons.includes("使用日までに納品できない")) reasons.push("使用日までに納品できない");
     const sub = subtotalYen(l.pricePerKg, input.grams);
-    const best = (usable.length ? usable : okOptions).sort((a, b) => a.feeYen - b.feeYen)[0];
+    // 料金が決まっている方法を先に（見積もりは合計が未確定のため）
+    const best = (usable.length ? usable : okOptions).sort((a, b) => Number(a.quote) - Number(b.quote) || a.feeYen - b.feeYen)[0];
     const total = sub + (best?.feeYen ?? 0);
     if (best && total > input.budgetYen) reasons.push("送料込みの予算を超える");
     if (total > ORDER_TOTAL_MAX) reasons.push("注文合計の上限（100,000円）を超える");
@@ -65,7 +71,7 @@ export async function search(input: SearchInput, viewerId: string | null, now: D
     const gapDays = Math.max(0, (input.useDate.getTime() - best!.arrives.getTime()) / DAY);
     const methodRank = input.methods.indexOf(best!.method);
     const fit = 0.5 * Math.min(1, slack * 2) + 0.3 / (1 + gapDays) + 0.2 * (1 - methodRank / Math.max(1, input.methods.length));
-    return [{ ...l, hasPhoto: !!photo, producerHasPhoto: !!l.producer.photo, stock, grams: input.grams, subtotalYen: sub, method: best!.method, feeYen: best!.feeYen, totalYen: total, alternative, fit, fitBand: Math.round(fit * 5) }];
+    return [{ ...l, hasPhoto: !!photo, producerHasPhoto: !!l.producer.photo, stock, grams: input.grams, subtotalYen: sub, method: best!.method, feeYen: best!.feeYen, quote: best!.quote, totalYen: total, alternative, fit, fitBand: Math.round(fit * 5) }];
   });
 
   // 区分を決めるための数（販売確定の実績・前の取引・表示の回数）

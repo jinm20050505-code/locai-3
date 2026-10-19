@@ -4,7 +4,8 @@
 
 - 既存の LocAI・LocAI.2・公開中のサイト・本番 DB とは別のフォルダ（`/workspaces/LocAI-3`）と、別の DB（コンテナ内の PostgreSQL）で動きます。
 - ソースは GitHub の非公開リポジトリ `jinm20050505-code/locai-3` に保存しています。秘密情報（`.env.local`）・デモのログイン情報・DB のデータ・バックアップは Git に入れません。
-- 仕様との照合の結果は [docs/spec-check.md](docs/spec-check.md)。
+- 仕様書（正本）は [docs/spec.md](docs/spec.md)、照合の結果は [docs/spec-check.md](docs/spec-check.md)。
+- 露出の偏りの確認：`npm run report:exposure`、成功の基準のうち測れるもの：`npm run report:metrics`
 
 ## 起動方法
 
@@ -37,7 +38,9 @@ node tests/e2e/shots.mjs        # 見た目（文字の大きさ・ボタンの�
 | トップ | `/` |
 | 野菜を探す（写真付きの一覧） | `/search` |
 | 商品の詳細・申し込み | `/listings/[id]` |
-| 注文の状況（お店） | `/orders`、1件ごと `/orders/[id]` |
+| マイページ（お店の注文の状況・今週の確保済み食材） | `/orders`、1件ごと `/orders/[id]` |
+| 探しています（お店／農家） | `/wanted`、`/producer/wanted` |
+| 出品の編集・出品への相談（農家） | `/producer/listings/[id]/edit`、`/producer/listings/[id]/messages` |
 | 出品一覧・出品する（農家） | `/producer`、`/producer/listings/new` |
 | 届いた購入希望（農家） | `/producer/orders` |
 | 登録・ログイン・お店（農園）の情報 | `/signup`、`/login`、`/account` |

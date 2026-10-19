@@ -42,6 +42,7 @@ if (demoIds.length) {
   await db.query(`DELETE FROM "wanted_post" WHERE "buyerId" = ANY($1)`, [demoIds]);
   await db.query(`DELETE FROM "search_preset" WHERE "userId" = ANY($1)`, [demoIds]);
   await db.query(`DELETE FROM "report" WHERE "reporterId" = ANY($1)`, [demoIds]);
+  await db.query(`DELETE FROM "listing_message" WHERE "senderId" = ANY($1)`, [demoIds]);
   await db.query(`DELETE FROM "ai_call" WHERE "userId" = ANY($1)`, [demoIds]);
   await db.query(`DELETE FROM "user" WHERE id = ANY($1)`, [demoIds]);
 }
@@ -71,11 +72,12 @@ async function listing(producerId, l, photoKey) {
   const id = randomUUID();
   await db.query(
     `INSERT INTO "listing" (id, "producerId", name, variety, description, "surplusReason", "allowPartial", "totalGrams", "minGrams", "unitGrams", "pricePerKg", "availableFrom", "availableUntil", "acceptUntil", "replyUntil",
-       courier, "courierPrefs", "courierFees", "courierTemp", "courierDays", delivery, "deliveryFeeYen", "deliveryPrefs", "deliveryMaxOrders", pickup, "pickupPref", "pickupCity", status, "isDemo", "createdAt", "updatedAt")
-     VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,$16,$17,$18,$19,$20,$21,$22,$23,$24,$25,$26,$27,'open',true,now(),now())`,
+       courier, "courierPrefs", "courierFees", "courierTemp", "courierDays", delivery, "deliveryFeeYen", "deliveryPrefs", "deliveryMaxOrders", pickup, "pickupPref", "pickupCity", "courierQuote", "deliveryQuote", "deliveryWeekdays", status, "isDemo", "createdAt", "updatedAt")
+     VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,$16,$17,$18,$19,$20,$21,$22,$23,$24,$25,$26,$27,$28,$29,$30,'open',true,now(),now())`,
     [id, producerId, l.name, l.variety ?? null, l.description ?? null, l.surplus ?? null, l.partial ?? true, l.total, l.min, l.unit, l.price, day(l.from), day(l.until), at(l.acceptDay, "12:00"), at(l.acceptDay, "20:00"),
      !!l.courier, l.courier?.prefs ?? [], l.courier ? JSON.stringify(l.courier.bands) : null, l.courier?.temp ?? null, l.courier?.days ?? null,
-     !!l.delivery, l.delivery?.[0] ?? null, l.delivery?.[1] ?? [], l.delivery?.[2] ?? null, !!l.pickup, l.pickup?.[0] ?? null, l.pickup?.[1] ?? null],
+     !!l.delivery, l.delivery?.[0] ?? null, l.delivery?.[1] ?? [], l.delivery?.[2] ?? null, !!l.pickup, l.pickup?.[0] ?? null, l.pickup?.[1] ?? null,
+     !!l.courierQuote, !!l.deliveryQuote, l.weekdays ?? []],
   );
   await db.query(`INSERT INTO "listing_photo" ("listingId", mime, data, "createdAt") VALUES ($1,'image/svg+xml',$2,now())`, [id, PHOTOS[photoKey]]);
   return id;
@@ -86,7 +88,8 @@ await listing(sakata, { name: "なす", variety: "千両なす", surplus: "規�
 const manganji = await listing(midori, { name: "万願寺唐辛子", description: "甘くて肉厚。焼いてもおいしい（架空）。", surplus: "豊作", total: 10000, min: 500, unit: 500, price: 1500, from: 1, until: 3, acceptDay: 2, delivery: [800, ["26", "27"]] }, "manganji");
 await listing(midori, { name: "伏見甘長", description: "細長い甘とうがらし。焼物や炊いたんに（架空）。", total: 6000, min: 500, unit: 500, price: 1200, from: 1, until: 4, acceptDay: 3, courier: { prefs: ["26", "27"], bands: [{ upToGrams: 3000, feeYen: 700 }, { upToGrams: 10000, feeYen: 1100 }], temp: "chilled", days: 1 } }, "manganji");
 await listing(midori, { name: "ミニトマト", total: 6000, min: 500, unit: 250, price: 1200, from: 2, until: 4, acceptDay: 3, pickup: ["26", "亀岡市"], delivery: [800, ["26", "27"]] }, "tomato");
-await listing(yamabiko, { name: "ねぎ", variety: "九条ねぎ", total: 8000, min: 1000, unit: 1000, price: 700, from: 1, until: 6, acceptDay: 5, pickup: ["29", "宇陀市"] }, "negi");
+// 配達料は見積もり・配達できる曜日つきの例
+await listing(yamabiko, { name: "ねぎ", variety: "九条ねぎ", total: 8000, min: 1000, unit: 1000, price: 700, from: 1, until: 6, acceptDay: 5, pickup: ["29", "宇陀市"], delivery: [null, ["29", "27"], null], deliveryQuote: true, weekdays: [1, 3, 5] }, "negi");
 await listing(awaji, { name: "玉ねぎ", total: 50000, min: 5000, unit: 1000, price: 300, from: 2, until: 7, acceptDay: 6, courier: { prefs: ["28", "27", "26"], bands: [{ upToGrams: 10000, feeYen: 1000 }, { upToGrams: 30000, feeYen: 1800 }], temp: "normal", days: 2 } }, "tamanegi");
 
 // 仕様書の例：賀茂茄子30kg に、A店5kg（販売確定）・B店4kg（返事待ち）→ ほかの店が申し込めるのは21kg

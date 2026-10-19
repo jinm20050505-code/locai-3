@@ -11,7 +11,7 @@ export type CardItem = {
   surplusReason: string | null; acceptUntil: Date; replyUntil: Date; availableFrom: Date; availableUntil: Date;
   producer: { id: string; name: string; prefecture: string | null; city: string | null; intro: string | null };
   producerHasPhoto: boolean;
-  stock: { availableGrams: number; totalGrams: number; soldGrams: number; heldGrams: number }; grams: number; subtotalYen: number; totalYen: number; feeYen: number; method: Method;
+  stock: { availableGrams: number; totalGrams: number; soldGrams: number; heldGrams: number }; grams: number; subtotalYen: number; totalYen: number; feeYen: number; method: Method; quote?: boolean;
   alternative?: boolean;
 };
 
@@ -29,8 +29,17 @@ export function ListingCard({ item, query }: { item: CardItem; query: string }) 
           <div className="min-w-0 flex-1 space-y-1">
             {item.alternative && <p className="inline-block rounded-md border border-note bg-note-soft px-2 text-sm font-bold text-note">代わりの野菜</p>}
             <p className="text-xl font-bold leading-snug">{item.name}{item.variety && <span className="text-lg font-normal">（{item.variety}）</span>}</p>
-            <p className="text-xl"><b>合計 {formatYen(item.totalYen)}</b></p>
-            <p className="text-base">商品代 {formatYen(item.subtotalYen)}（{formatKg(item.grams)}）＋ {item.method === "pickup" ? "引き取り 0円" : `送料・配達料 ${formatYen(item.feeYen)}`}</p>
+            {item.quote ? (
+              <>
+                <p className="text-xl"><b>商品代 {formatYen(item.subtotalYen)}</b></p>
+                <p className="text-base">（{formatKg(item.grams)}）＋ 送料・配達料は見積もり（合計は未確定）</p>
+              </>
+            ) : (
+              <>
+                <p className="text-xl"><b>合計 {formatYen(item.totalYen)}</b></p>
+                <p className="text-base">商品代 {formatYen(item.subtotalYen)}（{formatKg(item.grams)}）＋ {item.method === "pickup" ? "引き取り 0円" : `送料・配達料 ${formatYen(item.feeYen)}`}</p>
+              </>
+            )}
           </div>
         </div>
         <div className="flex items-center gap-2">

@@ -30,3 +30,5 @@ export function parseDateTime(text: string): Date | null {
   const d = new Date(`${text}:00+09:00`);
   return Number.isNaN(d.getTime()) ? null : d;
 }
+/** Date →「2026-10-22T18:00」（日本時間。日時の入力欄の値） */
+export const toJstInput = (d: Date) => new Date(d.getTime() + JST).toISOString().slice(0, 16);

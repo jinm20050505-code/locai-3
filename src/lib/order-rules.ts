@@ -9,21 +9,23 @@ export type OrderStatus = (typeof ORDER_STATUSES)[number];
 export const ACTIVE: readonly OrderStatus[] = ["pending", "changeRequested"];
 
 /** 状態の名前（色だけに頼らず、必ず文字で出す） */
-export const STATUS_LABEL: Record<OrderStatus, string> = {
-  pending: "農家さんの返事待ち（まだ確定していません）",
-  changeRequested: "農家さんから条件の変更（あなたの確認待ち）",
-  confirmed: "販売確定",
-  declined: "見送り（今回は売れません）",
-  cancelled: "取消",
-  expired: "期限切れ（返事がありませんでした）",
-};
+/** 状態の名前（仕様の言葉。色だけに頼らず、必ず文字で出す） */
 export const STATUS_SHORT: Record<OrderStatus, string> = {
-  pending: "返事待ち",
-  changeRequested: "変更の確認待ち",
+  pending: "回答待ち",
+  changeRequested: "条件変更の確認待ち",
   confirmed: "販売確定",
   declined: "見送り",
   cancelled: "取消",
   expired: "期限切れ",
+};
+/** 状態の説明つきの名前 */
+export const STATUS_LABEL: Record<OrderStatus, string> = {
+  pending: "回答待ち（まだ確定していません）",
+  changeRequested: "条件変更の確認待ち（あなたの同意で確定します）",
+  confirmed: "販売確定",
+  declined: "見送り（今回は売れません）",
+  cancelled: "取消",
+  expired: "期限切れ（回答期限までに返事がありませんでした）",
 };
 
 type OrderLike = { status: string; replyDeadline: Date };
@@ -72,8 +74,3 @@ export function quantityChoices(l: { minGrams: number; unitGrams: number }, maxG
   return out;
 }
 
-/** 返事の期限 = 申し込みから replyHours 後。ただし受付の締め切りより後にはしない */
-export function replyDeadlineFor(now: Date, l: { replyHours: number; acceptUntil: Date }): Date {
-  const byHours = new Date(now.getTime() + l.replyHours * 3_600_000);
-  return byHours.getTime() < l.acceptUntil.getTime() ? byHours : l.acceptUntil;
-}

@@ -32,7 +32,8 @@ export async function signupAction(_: AuthState, fd: FormData): Promise<AuthStat
     const msg = (e as { body?: { code?: string } }).body?.code === "USER_ALREADY_EXISTS" || /exist/i.test(String((e as Error).message)) ? "このメールアドレスは登録済みです。ログインしてください" : "登録できませんでした。少し待ってから、もう一度お試しください";
     return { errors: { email: msg }, values };
   }
-  redirect(safeNext(values.next) || ROLE_HOME[values.role as Role]);
+  // 生産者は、初回にプロフィール（写真・畑の地域・栽培している品目・こだわり）を作る（仕様 4章 B①）
+  redirect(safeNext(values.next) || (values.role === "producer" ? "/account?welcome=1" : ROLE_HOME[values.role as Role]));
 }
 
 export async function loginAction(_: AuthState, fd: FormData): Promise<AuthState> {

@@ -3,7 +3,8 @@
 // 金額は画面から受け取らず、ここで計算する。
 import { getDb } from "@/lib/db";
 import { subtotalYen } from "@/lib/money";
-import { ACTIVE, effectiveStatus, quantityProblem, replyDeadlineFor, stockOf, type OrderStatus } from "@/lib/order-rules";
+import { methodFee, METHODS, type Method } from "@/lib/delivery";
+import { ACTIVE, effectiveStatus, quantityProblem, stockOf, type OrderStatus } from "@/lib/order-rules";
 import type { Prisma } from "@/generated/prisma/client";
 
 type Tx = Prisma.TransactionClient;
@@ -21,6 +22,16 @@ async function stockInTx(tx: Tx, listingId: string, totalGrams: number, now: Dat
   return stockOf(totalGrams, orders, now);
 }
 
+export const ORDER_TOTAL_MAX = 100_000; // 注文合計の上限（仕様 5章：予算・注文合計 1〜100,000円）
+const RATE = { perMinute: 10 }; // 連続操作の回数の上限（アプリで決めた仮の値）
+
+/** 自分で配達の受付件数の上限に達していないか（販売確定と、期限内の回答待ち・確認待ちを数える） */
+async function deliveryFull(tx: Tx, l: { id: string; deliveryMaxOrders: number | null }, now: Date, excludeOrderId?: string) {
+  if (!l.deliveryMaxOrders) return false;
+  const n = await tx.order.count({ where: { listingId: l.id, method: "delivery", id: excludeOrderId ? { not: excludeOrderId } : undefined, OR: [{ status: "confirmed" }, { status: { in: [...ACTIVE] }, replyDeadline: { gt: now } }] } });
+  return n >= l.deliveryMaxOrders;
+}
+
 export type ApplyInput = { listingId: string; grams: number; method: string; useDate: Date; requestId: string };
 
 /** 購入希望を送る（仮押さえする。まだ販売確定ではない）。同じ requestId なら1件だけ */
@@ -30,6 +41,7 @@ export async function applyOrder(buyerId: string, input: ApplyInput, now = new D
   if (again) return { ok: true, id: again.id };
   const buyer = await db.user.findUnique({ where: { id: buyerId }, select: { role: true, prefecture: true } });
   if (buyer?.role !== "buyer") return fail("飲食店のアカウントで申し込んでください");
+  if ((await db.order.count({ where: { buyerId, createdAt: { gt: new Date(now.getTime() - 60_000) } } })) >= RATE.perMinute) return fail("短い時間に続けて送られています。1分ほど待ってから、もう一度お試しください");
   try {
     return await db.$transaction(async (tx): Promise<Result> => {
       await lockListing(tx, input.listingId, now);
@@ -38,27 +50,25 @@ export async function applyOrder(buyerId: string, input: ApplyInput, now = new D
       if (dup) return { ok: true, id: dup.id };
       const l = await tx.listing.findUnique({ where: { id: input.listingId } });
       if (!l) return fail("出品が見つかりません");
-      if (l.status !== "open" || l.acceptUntil <= now) return fail("この出品は、いま購入希望を受け付けていません");
+      if (l.status !== "open" || l.acceptUntil <= now || l.replyUntil <= now) return fail("この出品は、いま購入希望を受け付けていません（受付期限を過ぎました）");
       if (l.producerId === buyerId) return fail("自分の出品には申し込めません");
       const qp = quantityProblem(input.grams, l);
       if (qp) return fail(qp);
       if (input.useDate < l.availableFrom || input.useDate > l.availableUntil) return fail("受け取る日は、受け渡しできる期間の中から選んでください");
-      let feeYen = 0;
-      if (input.method === "delivery") {
-        if (!l.delivery) return fail("この出品はお届けをしていません");
-        if (!buyer.prefecture || !l.deliveryPrefs.includes(buyer.prefecture)) return fail("お店の地域はお届けの範囲外です。引き取りを選んでください");
-        feeYen = l.deliveryFeeYen ?? 0;
-      } else if (input.method === "pickup") {
-        if (!l.pickup) return fail("この出品は引き取りをしていません");
-      } else return fail("受け取り方法を選んでください");
+      if (!METHODS.includes(input.method as Method)) return fail("受け取り方法を選んでください");
+      const fee = methodFee(l, input.method as Method, buyer.prefecture, input.grams);
+      if (!fee.ok) return fail(fee.reason);
+      if (input.method === "delivery" && (await deliveryFull(tx, l, now))) return fail("配達の受付件数がいっぱいです。ほかの受け取り方法を選んでください");
+      const feeYen = fee.feeYen;
       const stock = await stockInTx(tx, l.id, l.totalGrams, now);
       if (input.grams > stock.availableGrams) return fail(`残りが足りません。いま申し込めるのは ${stock.availableGrams / 1000}kg までです`);
       const sub = subtotalYen(l.pricePerKg, input.grams);
+      if (sub + feeYen > ORDER_TOTAL_MAX) return fail("1回の注文合計は 100,000円 までです。数量を減らしてください");
       const o = await tx.order.create({
         data: {
           listingId: l.id, buyerId, producerId: l.producerId, requestId: input.requestId, status: "pending", method: input.method,
           pricePerKg: l.pricePerKg, quantityGrams: input.grams, subtotalYen: sub, feeYen, totalYen: sub + feeYen, heldGrams: input.grams,
-          useDate: input.useDate, replyDeadline: replyDeadlineFor(now, l),
+          useDate: input.useDate, replyDeadline: l.replyUntil,
         },
         select: { id: true },
       });
@@ -77,6 +87,7 @@ export async function applyOrder(buyerId: string, input: ApplyInput, now = new D
 /** 注文を読み、出品をロックしてから処理する共通部分（当事者でなければ見つからない扱い） */
 async function withOrder(orderId: string, who: { buyerId?: string; producerId?: string }, now: Date, fn: (tx: Tx, o: Prisma.OrderGetPayload<object>, status: OrderStatus) => Promise<Result>): Promise<Result> {
   const db = getDb();
+  if (typeof orderId !== "string" || !orderId) return fail("注文が見つかりません");
   const first = await db.order.findFirst({ where: { id: orderId, ...who }, select: { listingId: true } });
   if (!first) return fail("注文が見つかりません");
   return db.$transaction(async (tx) => {
@@ -92,9 +103,28 @@ const ended = (s: OrderStatus) => (s === "expired" ? "返事の期限が過ぎ�
 export function approveOrder(producerId: string, orderId: string, now = new Date()) {
   return withOrder(orderId, { producerId }, now, async (tx, o, s) => {
     if (s !== "pending") return fail(s === "changeRequested" ? "条件の変更を提案中です。飲食店の返事を待ってください" : ended(s));
+    // 承認の前に、在庫と配送の対応をもう一度確かめる
+    const l = await tx.listing.findUniqueOrThrow({ where: { id: o.listingId } });
+    const stock = await stockInTx(tx, l.id, l.totalGrams, now);
+    if (stock.soldGrams + stock.heldGrams > l.totalGrams) return fail("在庫の数が合いません。いったん見送りにしてください");
+    if (o.method === "delivery" && l.deliveryMaxOrders) {
+      const confirmed = await tx.order.count({ where: { listingId: l.id, method: "delivery", status: "confirmed" } });
+      if (confirmed >= l.deliveryMaxOrders) return fail(`配達の受付件数（${l.deliveryMaxOrders}件）に達しています。承認できません`);
+    }
     await tx.order.update({ where: { id: o.id }, data: { status: "confirmed", heldGrams: 0, decidedAt: now } });
     return { ok: true, id: o.id };
   });
+}
+
+/** 生産者：全件承認（回答待ちの購入希望を、届いた順に1件ずつ承認する。承認できなかったものは理由を返す） */
+export async function approveAll(producerId: string, listingId: string, now = new Date()) {
+  const pending = await getDb().order.findMany({ where: { listingId, producerId, status: "pending", replyDeadline: { gt: now } }, orderBy: { createdAt: "asc" }, select: { id: true, buyer: { select: { name: true } } } });
+  const results: { id: string; buyer: string; ok: boolean; problem?: string }[] = [];
+  for (const p of pending) {
+    const r = await approveOrder(producerId, p.id, now);
+    results.push({ id: p.id, buyer: p.buyer.name, ok: r.ok, problem: r.ok ? undefined : r.problems[0] });
+  }
+  return results;
 }
 
 /** 生産者：見送る */
@@ -147,10 +177,11 @@ export function cancelOrder(buyerId: string, orderId: string, now = new Date()) 
 const PARTY = { select: { name: true, prefecture: true, city: true, isDemo: true } } as const;
 
 export async function getOrderForParty(userId: string, orderId: string) {
+  if (typeof orderId !== "string" || !orderId || typeof userId !== "string" || !userId) return null;
   return getDb().order.findFirst({
     where: { id: orderId, OR: [{ buyerId: userId }, { producerId: userId }] },
     include: {
-      listing: { select: { id: true, name: true, variety: true, unitGrams: true, minGrams: true, pickupPref: true, pickupCity: true, isDemo: true } },
+      listing: { select: { id: true, name: true, variety: true, unitGrams: true, minGrams: true, pickupPref: true, pickupCity: true, isDemo: true, courierTemp: true, courierDays: true } },
       buyer: PARTY, producer: PARTY,
       messages: { orderBy: { createdAt: "asc" }, select: { id: true, body: true, createdAt: true, senderId: true } },
     },
@@ -162,7 +193,7 @@ export async function listBuyerOrders(buyerId: string) {
 }
 
 export async function listProducerOrders(producerId: string) {
-  return getDb().order.findMany({ where: { producerId }, orderBy: { createdAt: "desc" }, take: 200, include: { listing: { select: { id: true, name: true, variety: true } }, buyer: { select: { name: true, prefecture: true, city: true } } } });
+  return getDb().order.findMany({ where: { producerId }, orderBy: { createdAt: "desc" }, take: 300, include: { listing: { select: { id: true, name: true, variety: true, totalGrams: true, status: true, acceptUntil: true, replyUntil: true, deliveryMaxOrders: true, producerId: true } }, buyer: { select: { name: true, prefecture: true, city: true } } } });
 }
 
 /** メッセージを送る（当事者だけ・終わった注文には送れない） */
@@ -175,6 +206,7 @@ export async function sendMessage(userId: string, orderId: string, body: string,
   if (!o) return fail("注文が見つかりません");
   const s = effectiveStatus(o, now);
   if (!["pending", "changeRequested", "confirmed"].includes(s)) return fail("この注文は終わったため、メッセージは送れません");
+  if ((await db.message.count({ where: { senderId: userId, createdAt: { gt: new Date(now.getTime() - 60_000) } } })) >= RATE.perMinute) return fail("短い時間に続けて送られています。1分ほど待ってから、もう一度お試しください");
   try {
     const m = await db.message.create({ data: { orderId, senderId: userId, body: t, requestId }, select: { id: true } });
     return { ok: true, id: m.id };

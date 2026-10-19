@@ -6,6 +6,7 @@ import { MessageForm, OrderButton, ProposeForm } from "@/components/orders/actio
 import { DemoBadge, Notice, StatusTag, card } from "@/components/ui";
 import { formatDateTime, formatDay } from "@/lib/dates";
 import { formatKg, formatYen } from "@/lib/money";
+import { METHOD_LABEL, TEMP_LABEL, type Method } from "@/lib/delivery";
 import { effectiveStatus, STATUS_LABEL } from "@/lib/order-rules";
 import { placeLabel } from "@/lib/regions";
 import { getCurrentUser } from "@/lib/session";
@@ -13,7 +14,7 @@ import { getOrderForParty } from "@/server/orders";
 import { getPublicListing } from "@/server/listings";
 
 const DONE: Record<string, string> = {
-  sent: "購入希望を送りました。まだ確定していません。農家さんの返事を待ちましょう。",
+  sent: "購入希望を送りました。まだ確定していません。農家さんの回答を待ちましょう。",
   approved: "承認しました。販売確定です。受け渡しの相談はメッセージでどうぞ。",
   declined: "見送りました。取り置きしていた量は戻りました。",
   proposed: "数量の変更を提案しました。お店が同意すると販売確定になります。",
@@ -49,10 +50,10 @@ async function Detail({ params, searchParams }: { params: PageProps<"/orders/[id
 
   // 次にすること（役割と状態で、1つにしぼって伝える）
   const next =
-    s === "pending" ? (isBuyer ? `農家さんの返事を待っています。返事の期限は ${formatDateTime(o.replyDeadline)} です。` : `返事をしてください（期限：${formatDateTime(o.replyDeadline)}）。期限を過ぎると、この購入希望は期限切れになります。`)
+    s === "pending" ? (isBuyer ? `農家さんの回答を待っています。回答期限は ${formatDateTime(o.replyDeadline)} です。まだ確定していません。` : `回答してください（回答期限：${formatDateTime(o.replyDeadline)}）。期限までに回答がないと、この購入希望は期限切れになり、仮押さえは解除されます。`)
     : s === "changeRequested" ? (isBuyer ? `農家さんから数量の変更の提案があります。同意すると販売確定です（期限：${formatDateTime(o.replyDeadline)}）。` : `お店の返事を待っています（期限：${formatDateTime(o.replyDeadline)}）。`)
-    : s === "confirmed" ? "販売確定です。受け渡しの日時・場所と支払いは、メッセージで相談してください（アプリの外で行います）。"
-    : s === "expired" ? "返事の期限を過ぎたため、期限切れになりました。取り置きしていた量は戻りました。"
+    : s === "confirmed" ? "販売確定です。次に、支払い方法・支払期限・発送予定（または受け取りの日時と場所）を、下のメッセージで相談してください。支払いと受け渡しはアプリの外で行います。"
+    : s === "expired" ? "回答期限を過ぎたため、期限切れ（未成立）になりました。仮押さえは解除されました。"
     : s === "declined" ? "農家さんが今回は見送りました。ほかの野菜を探してみてください。"
     : "取り消されました。";
 
@@ -76,9 +77,9 @@ async function Detail({ params, searchParams }: { params: PageProps<"/orders/[id
         <dl className="mt-1 grid grid-cols-[auto_1fr] gap-x-4 gap-y-1">
           <dt className="font-bold">数量</dt><dd>{formatKg(o.quantityGrams)}</dd>
           <dt className="font-bold">商品代</dt><dd>{formatYen(o.pricePerKg)} × {formatKg(o.quantityGrams)} ＝ {formatYen(o.subtotalYen)}</dd>
-          <dt className="font-bold">{o.method === "delivery" ? "送料" : "引き取り"}</dt><dd>{formatYen(o.feeYen)}</dd>
+          <dt className="font-bold">{o.method === "pickup" ? "引き取り" : "送料・配達料"}</dt><dd>{formatYen(o.feeYen)}</dd>
           <dt className="font-bold">送料込みの総額</dt><dd className="text-xl font-bold">{formatYen(o.totalYen)}</dd>
-          <dt className="font-bold">受け取り</dt><dd>{o.method === "delivery" ? "お店に届ける" : `畑で引き取り（${placeLabel(o.listing.pickupPref, o.listing.pickupCity)}）`}・{formatDay(o.useDate)}</dd>
+          <dt className="font-bold">受け取り</dt><dd>{METHOD_LABEL[o.method as Method]}{o.method === "pickup" ? `（${placeLabel(o.listing.pickupPref, o.listing.pickupCity)}）` : o.method === "courier" ? `（${TEMP_LABEL[o.listing.courierTemp ?? "normal"]}・届くまで約${o.listing.courierDays ?? 1}日）` : ""}・{formatDay(o.useDate)}</dd>
           <dt className="font-bold">申し込み</dt><dd>{formatDateTime(o.createdAt)}</dd>
         </dl>
       </section>

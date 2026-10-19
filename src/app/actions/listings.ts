@@ -6,7 +6,8 @@ import { redirect } from "next/navigation";
 import { z } from "zod";
 import { validateListing, type FieldErrors } from "@/lib/listing-rules";
 import { requireRole } from "@/lib/session";
-import { createListing, setListingStatus } from "@/server/listings";
+import { createListing, previousValues, setListingStatus } from "@/server/listings";
+import { getCurrentUser } from "@/lib/session";
 
 export type ListingState = { errors?: FieldErrors; problem?: string };
 const MAX_PHOTO = 1_500_000;
@@ -21,7 +22,7 @@ function photoKind(b: Buffer): string | null {
 export async function createListingAction(_: ListingState, fd: FormData): Promise<ListingState> {
   await connection();
   const user = await requireRole("producer");
-  const input = Object.fromEntries([...fd.keys()].filter((k) => k !== "photo").map((k) => [k, k === "deliveryPrefs" ? fd.getAll(k).map(String) : String(fd.get(k) ?? "").slice(0, 400)]));
+  const input = Object.fromEntries([...fd.keys()].filter((k) => k !== "photo").map((k) => [k, k === "deliveryPrefs" || k === "courierPrefs" ? fd.getAll(k).map(String) : String(fd.get(k) ?? "").slice(0, 600)]));
   const v = validateListing(input, new Date());
   const errors: FieldErrors = v.ok ? {} : { ...v.errors };
   let photo: { mime: string; data: Buffer } | null = null;
@@ -50,4 +51,12 @@ export async function listingStatusAction(_: ListingState, fd: FormData): Promis
   const ok = await setListingStatus(user.id, p.data.id, p.data.to);
   if (!ok) return { problem: "この出品の状態は変えられません（受付終了のあとは、もとに戻せません）" };
   redirect(`/producer?done=${p.data.to}`);
+}
+
+/** 同じ食材の前回の値段・量（確認の画面で、大きく違うときに注意を出す） */
+export async function previousAction(name: string) {
+  await connection();
+  const u = await getCurrentUser();
+  if (u?.role !== "producer" || typeof name !== "string" || !name.trim()) return null;
+  return previousValues(u.id, name.trim().slice(0, 30));
 }

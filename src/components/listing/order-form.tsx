@@ -5,40 +5,34 @@
 import { useActionState, useState } from "react";
 import { applyAction, type ActionState } from "@/app/actions/orders";
 import { btn, input, label, Notice } from "@/components/ui";
+import { courierFee, METHOD_LABEL, type FeeBand, type Method } from "@/lib/delivery";
 import { formatKg, formatYen, subtotalYen } from "@/lib/money";
 import { quantityChoices } from "@/lib/order-rules";
 
+export type MethodOption = { method: Method; ok: boolean; reason?: string; feeYen?: number; bands?: FeeBand[]; note: string };
 export type OrderFormListing = {
-  id: string; name: string; pricePerKg: number; minGrams: number; unitGrams: number; availableGrams: number;
-  pickup: boolean; pickupPlace: string; delivery: boolean; deliveryFeeYen: number; deliveryOk: boolean;
-  availableFrom: string; availableUntil: string; replyHours: number;
+  id: string; pricePerKg: number; minGrams: number; unitGrams: number; availableGrams: number; allowPartial: boolean;
+  methods: MethodOption[]; availableFrom: string; availableUntil: string; replyUntilText: string;
 };
 
-export function OrderForm({ l, initial }: { l: OrderFormListing; initial: { grams: number | null; date: string; method: string } }) {
-  const choices = quantityChoices(l, l.availableGrams);
+const feeOf = (m: MethodOption | undefined, grams: number) => (!m ? null : m.method === "courier" ? courierFee(m.bands ?? [], grams) : m.feeYen ?? 0);
+
+export function OrderForm({ l, initial }: { l: OrderFormListing; initial: { grams: number | null; date: string } }) {
+  const choices = l.allowPartial ? quantityChoices(l, l.availableGrams) : l.availableGrams >= l.minGrams ? [l.minGrams] : [];
   const [grams, setGrams] = useState(initial.grams && choices.includes(initial.grams) ? initial.grams : choices[0]);
-  const methods = [l.pickup && "pickup", l.delivery && l.deliveryOk && "delivery"].filter(Boolean) as string[];
-  const [method, setMethod] = useState(methods.includes(initial.method) ? initial.method : methods[0] ?? "");
+  const usable = l.methods.filter((m) => m.ok);
+  const [method, setMethod] = useState<Method | "">(usable[0]?.method ?? "");
+  const lastDay = initial.date && initial.date < l.availableUntil && initial.date >= l.availableFrom ? initial.date : l.availableUntil;
   const [date, setDate] = useState(initial.date >= l.availableFrom && initial.date <= l.availableUntil ? initial.date : l.availableFrom);
   const [step, setStep] = useState<"choose" | "confirm">("choose");
   const [requestId] = useState(() => crypto.randomUUID());
   const [state, action, pending] = useActionState<ActionState, FormData>(applyAction, {});
+  const chosen = l.methods.find((m) => m.method === method);
   const sub = subtotalYen(l.pricePerKg, grams ?? 0);
-  const fee = method === "delivery" ? l.deliveryFeeYen : 0;
-
+  const fee = feeOf(chosen, grams ?? 0);
   if (choices.length === 0) return <Notice kind="warn" title="残りがないため、いまは申し込めません" />;
 
-  const summary = (
-    <dl className="grid grid-cols-[auto_1fr] gap-x-4 gap-y-2 text-lg">
-      <dt className="font-bold">数量</dt><dd>{formatKg(grams)}</dd>
-      <dt className="font-bold">商品代</dt><dd>{formatYen(l.pricePerKg)} × {formatKg(grams)} ＝ {formatYen(sub)}</dd>
-      <dt className="font-bold">{method === "delivery" ? "送料" : "引き取り"}</dt><dd>{formatYen(fee)}</dd>
-      <dt className="font-bold">送料込みの総額</dt><dd className="text-xl font-bold">{formatYen(sub + fee)}</dd>
-      <dt className="font-bold">受け取り</dt><dd>{method === "delivery" ? "お店に届けてもらう" : `畑で引き取る（${l.pickupPlace}）`}・{date.replaceAll("-", "/")}</dd>
-    </dl>
-  );
-
-  if (step === "confirm") {
+  if (step === "confirm" && chosen && fee !== null) {
     return (
       <form action={action} className="space-y-4">
         <input type="hidden" name="listingId" value={l.id} />
@@ -47,10 +41,16 @@ export function OrderForm({ l, initial }: { l: OrderFormListing; initial: { gram
         <input type="hidden" name="method" value={method} />
         <input type="hidden" name="useDate" value={date} />
         <h2 className="text-xl font-bold">内容を確かめてください</h2>
-        {summary}
+        <dl className="grid grid-cols-[auto_1fr] gap-x-4 gap-y-2 text-lg">
+          <dt className="font-bold">数量</dt><dd>{formatKg(grams)}</dd>
+          <dt className="font-bold">商品代</dt><dd>{formatYen(l.pricePerKg)} × {formatKg(grams)} ＝ {formatYen(sub)}</dd>
+          <dt className="font-bold">{method === "pickup" ? "引き取り" : "送料・配達料"}</dt><dd>{formatYen(fee)}</dd>
+          <dt className="font-bold">合計金額</dt><dd className="text-xl font-bold">{formatYen(sub + fee)}</dd>
+          <dt className="font-bold">受け取り</dt><dd>{METHOD_LABEL[chosen.method]}（{chosen.note}）・{date.replaceAll("-", "/")}</dd>
+        </dl>
         <Notice title="購入希望を送っただけでは、まだ確定しません">
-          <p>農家さんが {l.replyHours} 時間以内に返事をします。農家さんが承認すると「販売確定」になります。それまでの間、この量は取り置き（仮押さえ）されます。</p>
-          <p>お金の支払いと受け渡しは、販売確定のあとにアプリの外で行います。</p>
+          <p>農家さんが回答期限（{l.replyUntilText}）までに回答します。農家さんが承認すると、この数量・合計金額・受け取り条件で「販売確定」になります。農家さんが条件を変えた場合は、あなたが同意した時点で販売確定です。</p>
+          <p>それまでの間、この量は仮押さえされます。支払いと受け渡しは、販売確定のあとにアプリの外で行います。</p>
         </Notice>
         {state.problems?.length ? <Notice kind="warn" title="送れませんでした">{state.problems.map((p) => <p key={p}>{p}</p>)}</Notice> : null}
         <button className={btn.primary} disabled={pending}>{pending ? "送っています…" : "購入希望を送る"}</button>
@@ -61,42 +61,40 @@ export function OrderForm({ l, initial }: { l: OrderFormListing; initial: { gram
 
   return (
     <div className="space-y-5">
-      <h2 className="text-xl font-bold">数量と受け取り方法を選ぶ</h2>
+      <h2 className="text-xl font-bold">数量と受け取り条件を選ぶ</h2>
       <div>
-        <label htmlFor="grams" className={label}>数量</label>
-        <p className="text-base text-sub">{formatKg(l.minGrams)} から {formatKg(l.unitGrams)} ずつ選べます（残り {formatKg(l.availableGrams)}）</p>
+        <label htmlFor="grams" className={label}>希望数量</label>
+        <p className="text-base text-sub">{l.allowPartial ? `${formatKg(l.minGrams)} から ${formatKg(l.unitGrams)} ずつ選べます（申し込める量 ${formatKg(l.availableGrams)}）` : "この出品は全量での販売です"}</p>
         <select id="grams" className={input} value={grams} onChange={(e) => setGrams(Number(e.target.value))}>
-          {choices.map((g) => <option key={g} value={g}>{formatKg(g)}（{formatYen(subtotalYen(l.pricePerKg, g))}）</option>)}
+          {choices.map((g) => <option key={g} value={g}>{formatKg(g)}（商品代 {formatYen(subtotalYen(l.pricePerKg, g))}）</option>)}
         </select>
       </div>
       <fieldset>
         <legend className={label}>受け取り方法</legend>
         <div className="mt-1 grid gap-2">
-          {l.pickup && (
-            <label className={`flex min-h-12 items-start gap-3 rounded-xl border-2 p-3 ${method === "pickup" ? "border-brand-strong bg-brand-soft" : "border-line"}`}>
-              <input type="radio" name="m" checked={method === "pickup"} onChange={() => setMethod("pickup")} className="mt-1 h-6 w-6 accent-brand-strong" />
-              <span><b>畑で引き取る</b>（料金0円）<br /><span className="text-base text-sub">場所：{l.pickupPlace}（くわしい場所は販売確定のあとにメッセージで）</span></span>
-            </label>
-          )}
-          {l.delivery && (
-            <label className={`flex min-h-12 items-start gap-3 rounded-xl border-2 p-3 ${!l.deliveryOk ? "border-line bg-gray-50 text-sub" : method === "delivery" ? "border-brand-strong bg-brand-soft" : "border-line"}`}>
-              <input type="radio" name="m" checked={method === "delivery"} disabled={!l.deliveryOk} onChange={() => setMethod("delivery")} className="mt-1 h-6 w-6 accent-brand-strong" />
-              <span><b>お店に届けてもらう</b>（送料 {formatYen(l.deliveryFeeYen)}）{!l.deliveryOk && <><br /><span className="text-base">お店の地域はお届けの範囲外です</span></>}</span>
-            </label>
-          )}
+          {l.methods.map((m) => {
+            const f = feeOf(m, grams);
+            const ok = m.ok && f !== null;
+            return (
+              <label key={m.method} className={`flex min-h-12 items-start gap-3 rounded-xl border-2 p-3 ${!ok ? "border-line bg-gray-50 text-sub" : method === m.method ? "border-brand-strong bg-brand-soft" : "border-line"}`}>
+                <input type="radio" name="m" checked={method === m.method} disabled={!ok} onChange={() => setMethod(m.method)} className="mt-1 h-6 w-6 accent-brand-strong" />
+                <span><b>{METHOD_LABEL[m.method]}</b>{ok ? `（${m.method === "pickup" ? "料金0円" : `送料・配達料 ${formatYen(f!)}`}）` : ""}<br /><span className="text-base">{ok ? m.note : m.reason ?? "この量では使えません"}</span></span>
+              </label>
+            );
+          })}
         </div>
       </fieldset>
       <div>
         <label htmlFor="date" className={label}>受け取る日</label>
-        <p className="text-base text-sub">{l.availableFrom.replaceAll("-", "/")} 〜 {l.availableUntil.replaceAll("-", "/")} の中から選べます</p>
-        <input id="date" type="date" className={input} min={l.availableFrom} max={l.availableUntil} value={date} onChange={(e) => setDate(e.target.value)} />
+        <p className="text-base text-sub">{l.availableFrom.replaceAll("-", "/")} 〜 {lastDay.replaceAll("-", "/")} の中から選べます</p>
+        <input id="date" type="date" className={input} min={l.availableFrom} max={lastDay} value={date} onChange={(e) => setDate(e.target.value)} />
       </div>
       <div className="rounded-xl bg-brand-soft p-4">
-        <p className="text-base">送料込みの総額（目安）</p>
-        <p className="text-2xl font-bold">{formatYen(sub + fee)}</p>
+        <p className="text-base">合計金額（目安）</p>
+        <p className="text-2xl font-bold">{fee === null ? "受け取り方法を選んでください" : formatYen(sub + fee)}</p>
+        {fee !== null && <p className="text-base">商品代 {formatYen(sub)} ＋ {method === "pickup" ? "引き取り 0円" : `送料・配達料 ${formatYen(fee)}`}</p>}
       </div>
-      <button type="button" className={btn.primary} disabled={!method || !date} onClick={() => setStep("confirm")}>内容を確認する</button>
-      {!method && <p role="alert" className="text-base font-bold text-warn">⚠ 選べる受け取り方法がありません</p>}
+      <button type="button" className={btn.primary} disabled={!chosen || fee === null || !date} onClick={() => setStep("confirm")}>内容を確認する</button>
     </div>
   );
 }

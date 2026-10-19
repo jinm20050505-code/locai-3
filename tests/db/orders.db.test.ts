@@ -3,7 +3,9 @@ import { randomUUID } from "node:crypto";
 import { afterAll, beforeAll, describe, expect, it } from "vitest";
 import { getDb } from "@/lib/db";
 import { stockOf } from "@/lib/order-rules";
-import { acceptChange, applyOrder, approveOrder, cancelOrder, declineOrder, getOrderForParty, proposeChange, sendMessage } from "@/server/orders";
+import { search } from "@/server/search";
+import { createWanted, listOpenWanted, validateWanted } from "@/server/wanted";
+import { acceptChange, applyOrder, approveAll, approveOrder, cancelOrder, declineOrder, getOrderForParty, proposeChange, sendMessage } from "@/server/orders";
 
 const db = getDb();
 const tag = randomUUID().slice(0, 8);
@@ -14,17 +16,18 @@ async function mkUser(role: "buyer" | "producer", pref = "27") {
   users.push(id);
   return id;
 }
-async function mkListing(producerId: string, over: Partial<{ totalGrams: number; acceptUntil: Date; replyHours: number }> = {}) {
+async function mkListing(producerId: string, over: Partial<{ totalGrams: number; acceptUntil: Date; replyUntil: Date; allowPartial: boolean; minGrams: number; deliveryMaxOrders: number; courier: boolean }> = {}) {
   const d = (n: number) => new Date(Date.parse(new Date().toISOString().slice(0, 10)) + n * 86_400_000);
   return db.listing.create({
     data: {
-      producerId, name: `テストなす${tag}`, totalGrams: over.totalGrams ?? 10_000, minGrams: 1000, unitGrams: 500, pricePerKg: 333,
-      availableFrom: d(1), availableUntil: d(3), acceptUntil: over.acceptUntil ?? new Date(Date.now() + 3 * 86_400_000), replyHours: over.replyHours ?? 24,
-      pickup: true, pickupPref: "26", pickupCity: "南丹市", delivery: true, deliveryFeeYen: 1000, deliveryPrefs: ["27"], status: "open",
+      producerId, name: `テストなす${tag}`, totalGrams: over.totalGrams ?? 10_000, minGrams: over.minGrams ?? 1000, unitGrams: 500, pricePerKg: 333, allowPartial: over.allowPartial ?? true,
+      availableFrom: d(1), availableUntil: d(3), acceptUntil: over.acceptUntil ?? new Date(Date.now() + 2 * 86_400_000), replyUntil: over.replyUntil ?? new Date(Date.now() + 2.5 * 86_400_000),
+      pickup: true, pickupPref: "26", pickupCity: "南丹市", delivery: true, deliveryFeeYen: 1000, deliveryPrefs: ["27"], deliveryMaxOrders: over.deliveryMaxOrders ?? null,
+      courier: over.courier ?? false, courierPrefs: ["27"], courierFees: [{ upToGrams: 3000, feeYen: 700 }, { upToGrams: 10000, feeYen: 1200 }], courierTemp: "normal", courierDays: 1, status: "open",
     },
   });
 }
-const useDate = () => new Date(Date.parse(new Date().toISOString().slice(0, 10)) + 2 * 86_400_000);
+const dayAfter2 = () => new Date(Date.parse(new Date().toISOString().slice(0, 10)) + 2 * 86_400_000);
 async function stock(listingId: string, now = new Date()) {
   const l = await db.listing.findUniqueOrThrow({ where: { id: listingId }, include: { orders: true } });
   return stockOf(l.totalGrams, l.orders, now);
@@ -38,6 +41,7 @@ beforeAll(async () => {
   outsider = await mkUser("buyer");
 });
 afterAll(async () => {
+  await db.impression.deleteMany({ where: { producerId: { in: users } } });
   await db.message.deleteMany({ where: { senderId: { in: users } } });
   await db.order.deleteMany({ where: { buyerId: { in: users } } });
   await db.listing.deleteMany({ where: { producerId: { in: users } } });
@@ -47,7 +51,7 @@ afterAll(async () => {
 describe("金額はアプリが計算する", () => {
   it("単価×量（1円未満は四捨五入）＋送料。画面からの金額は受け取らない", async () => {
     const l = await mkListing(producer);
-    const r = await applyOrder(buyerA, { listingId: l.id, grams: 1500, method: "delivery", useDate: useDate(), requestId: randomUUID() });
+    const r = await applyOrder(buyerA, { listingId: l.id, grams: 1500, method: "delivery", useDate: dayAfter2(), requestId: randomUUID() });
     expect(r.ok).toBe(true);
     const o = await db.order.findUniqueOrThrow({ where: { id: (r as { id: string }).id } });
     expect([o.subtotalYen, o.feeYen, o.totalYen]).toEqual([500, 1000, 1500]); // 333×1.5=499.5 → 500
@@ -57,14 +61,14 @@ describe("金額はアプリが計算する", () => {
 describe("売りすぎない", () => {
   it("残り1kgに2店が同時に申し込んでも、1件だけ通る", async () => {
     const l = await mkListing(producer, { totalGrams: 1000 });
-    const rs = await Promise.all([buyerA, buyerB].map((b) => applyOrder(b, { listingId: l.id, grams: 1000, method: "pickup", useDate: useDate(), requestId: randomUUID() })));
+    const rs = await Promise.all([buyerA, buyerB].map((b) => applyOrder(b, { listingId: l.id, grams: 1000, method: "pickup", useDate: dayAfter2(), requestId: randomUUID() })));
     expect(rs.filter((r) => r.ok)).toHaveLength(1);
     expect((await stock(l.id)).availableGrams).toBe(0);
   });
   it("同じ送信を5回続けて送っても（連打・再送）、注文は1件", async () => {
     const l = await mkListing(producer);
     const requestId = randomUUID();
-    const rs = await Promise.all(Array.from({ length: 5 }, () => applyOrder(buyerA, { listingId: l.id, grams: 2000, method: "pickup", useDate: useDate(), requestId })));
+    const rs = await Promise.all(Array.from({ length: 5 }, () => applyOrder(buyerA, { listingId: l.id, grams: 2000, method: "pickup", useDate: dayAfter2(), requestId })));
     expect(new Set(rs.map((r) => (r as { id: string }).id)).size).toBe(1);
     expect(await db.order.count({ where: { listingId: l.id } })).toBe(1);
     expect((await stock(l.id)).heldGrams).toBe(2000);
@@ -72,7 +76,7 @@ describe("売りすぎない", () => {
   it("8件が同時に3kgずつ申し込んでも、10kgを超えない（3件まで）", async () => {
     const l = await mkListing(producer);
     const buyers = await Promise.all(Array.from({ length: 8 }, () => mkUser("buyer")));
-    const rs = await Promise.all(buyers.map((b) => applyOrder(b, { listingId: l.id, grams: 3000, method: "pickup", useDate: useDate(), requestId: randomUUID() })));
+    const rs = await Promise.all(buyers.map((b) => applyOrder(b, { listingId: l.id, grams: 3000, method: "pickup", useDate: dayAfter2(), requestId: randomUUID() })));
     expect(rs.filter((r) => r.ok)).toHaveLength(3);
     const s = await stock(l.id);
     expect(s.heldGrams).toBe(9000);
@@ -83,36 +87,35 @@ describe("売りすぎない", () => {
 describe("決めた流れ以外は起こさない", () => {
   it("取消すと取り置きが戻り、取消のあとは承認できない", async () => {
     const l = await mkListing(producer);
-    const r = (await applyOrder(buyerA, { listingId: l.id, grams: 4000, method: "pickup", useDate: useDate(), requestId: randomUUID() })) as { id: string };
+    const r = (await applyOrder(buyerA, { listingId: l.id, grams: 4000, method: "pickup", useDate: dayAfter2(), requestId: randomUUID() })) as { id: string };
     expect((await cancelOrder(buyerA, r.id)).ok).toBe(true);
     expect((await stock(l.id)).availableGrams).toBe(10_000);
     expect((await approveOrder(producer, r.id)).ok).toBe(false);
   });
-  it("返事の期限ちょうどに承認しても、期限切れ（取り置きは戻る）", async () => {
+  it("回答期限ちょうどに承認しても、期限切れ（仮押さえは解除）", async () => {
     const l = await mkListing(producer);
-    const r = (await applyOrder(buyerA, { listingId: l.id, grams: 3000, method: "pickup", useDate: useDate(), requestId: randomUUID() })) as { id: string };
+    const r = (await applyOrder(buyerA, { listingId: l.id, grams: 3000, method: "pickup", useDate: dayAfter2(), requestId: randomUUID() })) as { id: string };
     const o = await db.order.findUniqueOrThrow({ where: { id: r.id } });
     const res = await approveOrder(producer, r.id, o.replyDeadline);
     expect(res.ok).toBe(false);
     expect((await db.order.findUniqueOrThrow({ where: { id: r.id } })).status).toBe("expired");
     expect((await stock(l.id)).availableGrams).toBe(10_000);
   });
-  it("期限が過ぎた分の量は、次の申し込みに使える（例：30−5−4−3＝18、B店が期限切れで22）", async () => {
+  it("仕様の例：30kg に A店5kg（販売確定）・B店4kg・C店3kg（回答待ち）→ 申し込めるのは18kg。回答期限を過ぎると回答待ちの分が戻る", async () => {
     const l = await mkListing(producer, { totalGrams: 30_000 });
     const now = new Date();
-    const a = (await applyOrder(buyerA, { listingId: l.id, grams: 5000, method: "pickup", useDate: useDate(), requestId: randomUUID() }, now)) as { id: string };
+    const a = (await applyOrder(buyerA, { listingId: l.id, grams: 5000, method: "pickup", useDate: dayAfter2(), requestId: randomUUID() }, now)) as { id: string };
     await approveOrder(producer, a.id, now);
-    const later = new Date(now.getTime() + 10 * 3_600_000);
-    await applyOrder(buyerB, { listingId: l.id, grams: 4000, method: "pickup", useDate: useDate(), requestId: randomUUID() }, now);
-    await applyOrder(outsider, { listingId: l.id, grams: 3000, method: "pickup", useDate: useDate(), requestId: randomUUID() }, later);
-    expect((await stock(l.id, later)).availableGrams).toBe(18_000);
-    // B店の返事の期限（24時間後）を過ぎると、B店の4kgが戻る
-    const afterB = new Date(now.getTime() + 25 * 3_600_000);
-    expect((await stock(l.id, afterB)).availableGrams).toBe(22_000);
+    await applyOrder(buyerB, { listingId: l.id, grams: 4000, method: "pickup", useDate: dayAfter2(), requestId: randomUUID() }, now);
+    await applyOrder(outsider, { listingId: l.id, grams: 3000, method: "pickup", useDate: dayAfter2(), requestId: randomUUID() }, now);
+    expect((await stock(l.id, now)).availableGrams).toBe(18_000);
+    const after = new Date(l.replyUntil.getTime() + 1000);
+    expect((await stock(l.id, after)).availableGrams).toBe(25_000);
+    expect((await approveOrder(producer, (await db.order.findFirstOrThrow({ where: { listingId: l.id, buyerId: buyerB } })).id, after)).ok).toBe(false);
   });
   it("条件変更：提案すると取り置きは提案の量。同意すると販売確定で、金額も提案どおり", async () => {
     const l = await mkListing(producer);
-    const r = (await applyOrder(buyerA, { listingId: l.id, grams: 4000, method: "delivery", useDate: useDate(), requestId: randomUUID() })) as { id: string };
+    const r = (await applyOrder(buyerA, { listingId: l.id, grams: 4000, method: "delivery", useDate: dayAfter2(), requestId: randomUUID() })) as { id: string };
     expect((await proposeChange(producer, r.id, 2000, "半分なら")).ok).toBe(true);
     expect((await stock(l.id)).heldGrams).toBe(2000);
     expect((await approveOrder(producer, r.id)).ok).toBe(false); // 提案中は承認できない
@@ -124,16 +127,16 @@ describe("決めた流れ以外は起こさない", () => {
   });
   it("提案の量は、残りの範囲まで（ほかの取り置きを超えて増やせない）", async () => {
     const l = await mkListing(producer, { totalGrams: 5000 });
-    const r = (await applyOrder(buyerA, { listingId: l.id, grams: 2000, method: "pickup", useDate: useDate(), requestId: randomUUID() })) as { id: string };
-    await applyOrder(buyerB, { listingId: l.id, grams: 2000, method: "pickup", useDate: useDate(), requestId: randomUUID() });
+    const r = (await applyOrder(buyerA, { listingId: l.id, grams: 2000, method: "pickup", useDate: dayAfter2(), requestId: randomUUID() })) as { id: string };
+    await applyOrder(buyerB, { listingId: l.id, grams: 2000, method: "pickup", useDate: dayAfter2(), requestId: randomUUID() });
     expect((await proposeChange(producer, r.id, 3500, "")).ok).toBe(false);
     expect((await proposeChange(producer, r.id, 3000, "")).ok).toBe(true);
     expect((await stock(l.id)).availableGrams).toBe(0);
   });
   it("見送ると取り置きが戻り、販売確定は取消できない", async () => {
     const l = await mkListing(producer);
-    const a = (await applyOrder(buyerA, { listingId: l.id, grams: 2000, method: "pickup", useDate: useDate(), requestId: randomUUID() })) as { id: string };
-    const b = (await applyOrder(buyerB, { listingId: l.id, grams: 2000, method: "pickup", useDate: useDate(), requestId: randomUUID() })) as { id: string };
+    const a = (await applyOrder(buyerA, { listingId: l.id, grams: 2000, method: "pickup", useDate: dayAfter2(), requestId: randomUUID() })) as { id: string };
+    const b = (await applyOrder(buyerB, { listingId: l.id, grams: 2000, method: "pickup", useDate: dayAfter2(), requestId: randomUUID() })) as { id: string };
     expect((await declineOrder(producer, a.id)).ok).toBe(true);
     expect((await approveOrder(producer, b.id)).ok).toBe(true);
     expect((await cancelOrder(buyerB, b.id)).ok).toBe(false);
@@ -142,7 +145,7 @@ describe("決めた流れ以外は起こさない", () => {
   });
   it("数量の単位・最低量・受付の締め切り・お届けの範囲は、サーバーで断る", async () => {
     const l = await mkListing(producer);
-    const base = { listingId: l.id, method: "pickup", useDate: useDate() };
+    const base = { listingId: l.id, method: "pickup", useDate: dayAfter2() };
     expect((await applyOrder(buyerA, { ...base, grams: 1200, requestId: randomUUID() })).ok).toBe(false);
     expect((await applyOrder(buyerA, { ...base, grams: 500, requestId: randomUUID() })).ok).toBe(false);
     const kyoto = await mkUser("buyer", "26"); // お届けの範囲（大阪）の外
@@ -153,14 +156,106 @@ describe("決めた流れ以外は起こさない", () => {
   });
 });
 
+describe("仕様の追加の決まり", () => {
+  it("全件承認：届いた順に承認し、配達の受付件数を超える分は理由つきで承認しない（全量未達でも承認できる）", async () => {
+    const l = await mkListing(producer, { totalGrams: 30_000, deliveryMaxOrders: 2 });
+    const bs = await Promise.all(Array.from({ length: 3 }, () => mkUser("buyer")));
+    for (const b of bs) await applyOrder(b, { listingId: l.id, grams: 2000, method: "delivery", useDate: dayAfter2(), requestId: randomUUID() });
+    const c = await mkUser("buyer");
+    await applyOrder(c, { listingId: l.id, grams: 5000, method: "pickup", useDate: dayAfter2(), requestId: randomUUID() });
+    // 配達の受付件数は2件なので、3件目の配達の申し込みはそもそも断られる
+    expect(await db.order.count({ where: { listingId: l.id } })).toBe(3);
+    const r = await approveAll(producer, l.id);
+    expect(r.map((x) => x.ok)).toEqual([true, true, true]);
+    const s = await stock(l.id);
+    expect([s.soldGrams, s.heldGrams, s.availableGrams]).toEqual([9000, 0, 21_000]);
+  });
+  it("宅配発送の送料は重さで決まる。注文合計は 100,000円 まで", async () => {
+    const l = await mkListing(producer, { courier: true });
+    const r = (await applyOrder(buyerA, { listingId: l.id, grams: 4000, method: "courier", useDate: dayAfter2(), requestId: randomUUID() })) as { id: string };
+    expect((await db.order.findUniqueOrThrow({ where: { id: r.id } })).feeYen).toBe(1200);
+    const big = await db.listing.create({ data: { ...(await db.listing.findUniqueOrThrow({ where: { id: l.id } })), id: randomUUID(), pricePerKg: 50_000, courierFees: [], createdAt: undefined, updatedAt: undefined } });
+    expect((await applyOrder(buyerA, { listingId: big.id, grams: 3000, method: "pickup", useDate: dayAfter2(), requestId: randomUUID() })).ok).toBe(false);
+  });
+  it("全量のみの出品は、全量でしか申し込めない", async () => {
+    const l = await mkListing(producer, { totalGrams: 5000, minGrams: 5000, allowPartial: false });
+    const b = await mkUser("buyer");
+    expect((await applyOrder(b, { listingId: l.id, grams: 2000, method: "pickup", useDate: dayAfter2(), requestId: randomUUID() })).ok).toBe(false);
+    expect((await applyOrder(b, { listingId: l.id, grams: 5000, method: "pickup", useDate: dayAfter2(), requestId: randomUUID() })).ok).toBe(true);
+  });
+  it("短い時間に続けて送られた購入希望は、11件目から断る（連打の対策とは別の、回数の上限）", async () => {
+    const l = await mkListing(producer, { totalGrams: 100_000 });
+    const b = await mkUser("buyer");
+    const rs = [];
+    for (let i = 0; i < 11; i++) rs.push(await applyOrder(b, { listingId: l.id, grams: 1000, method: "pickup", useDate: dayAfter2(), requestId: randomUUID() }));
+    expect(rs.filter((r) => r.ok)).toHaveLength(10);
+    expect(rs[10].ok).toBe(false);
+  });
+  it("注文の番号が空のときは、何も返さない", async () => {
+    expect(await getOrderForParty(buyerA, "")).toBeNull();
+    expect((await cancelOrder(buyerA, "")).ok).toBe(false);
+  });
+  it("「探しています」を生産者が見るときは、店名・アカウントの番号は渡らない", async () => {
+    const v = validateWanted({ mode: "alt", q: "ししとう", kg: "2", budget: "4000", date: new Date(Date.now() + 2 * 86_400_000 + 9 * 3_600_000).toISOString().slice(0, 10), pref: "27", city: "大阪市", methods: ["courier"], usage: "焼物" }, new Date());
+    expect(v.ok).toBe(true);
+    if (!v.ok) return;
+    const w = await createWanted(buyerA, v.value);
+    expect(w.ok).toBe(true);
+    const list = await listOpenWanted("26");
+    const mine = list.find((x) => w.ok && x.id === w.id)!;
+    expect(mine).toBeTruthy();
+    expect(JSON.stringify(mine)).not.toContain(buyerA);
+    expect(Object.keys(mine)).not.toContain("buyerId");
+    await db.wantedPost.deleteMany({ where: { buyerId: buyerA } });
+  });
+  it("候補は3つに分かれ、同じ農家は2件まで。表示の少ない農家を先にし、表示は記録される", async () => {
+    const name = `公平テスト${tag}`;
+    const oldFarm = await mkUser("producer", "26");
+    await db.user.update({ where: { id: oldFarm }, data: { createdAt: new Date(Date.now() - 400 * 86_400_000) } });
+    const farmB = await mkUser("producer", "26");
+    await db.user.update({ where: { id: farmB }, data: { createdAt: new Date(Date.now() - 400 * 86_400_000) } });
+    const newFarm = await mkUser("producer", "26");
+    // 古い農家2軒は販売確定の実績あり（新しい農家の区分に入らない）。buyerA は oldFarm と取引あり（リピート）
+    const viewer = await mkUser("buyer");
+    const other = await mkUser("buyer");
+    for (const [f, b] of [[oldFarm, viewer], [farmB, other]] as const) {
+      const x = await mkListing(f);
+      const o = (await applyOrder(b, { listingId: x.id, grams: 1000, method: "pickup", useDate: dayAfter2(), requestId: randomUUID() })) as { id: string };
+      await approveOrder(f, o.id);
+    }
+    const mk = (f: string) => db.listing.create({ data: { producerId: f, name, totalGrams: 10_000, minGrams: 1000, unitGrams: 500, pricePerKg: 500, availableFrom: new Date(Date.parse(new Date().toISOString().slice(0, 10)) + 86_400_000), availableUntil: new Date(Date.parse(new Date().toISOString().slice(0, 10)) + 3 * 86_400_000), acceptUntil: new Date(Date.now() + 2 * 86_400_000), replyUntil: new Date(Date.now() + 2.5 * 86_400_000), pickup: true, pickupPref: "26", pickupCity: "南丹市", delivery: false, deliveryPrefs: [], courierPrefs: [], status: "open" } });
+    await mk(oldFarm); await mk(newFarm);
+    const b1 = await mk(farmB); const b2 = await mk(farmB); const b3 = await mk(farmB);
+    const input = { mode: "exact" as const, q: name, usage: "", grams: 2000, budgetYen: 5000, useDate: dayAfter2(), pref: "27", city: "大阪市", methods: ["pickup" as const] };
+    const r = await search(input, viewer, new Date());
+    expect(r.groups.repeat.shown.map((x) => x.producerId)).toEqual([oldFarm]);
+    expect(r.groups.newcomer.shown.map((x) => x.producerId)).toEqual([newFarm]);
+    expect(r.groups.match.shown).toHaveLength(2);
+    expect(r.groups.match.more).toHaveLength(1);
+    expect([b1.id, b2.id, b3.id]).toContain(r.groups.match.more[0].id);
+    expect(await db.impression.count({ where: { viewerId: viewer, listing: { name } } })).toBe(4);
+    // 表示の記録が少ない農家が先になる：farmB の表示を増やしてから、同じ条件の別の農家と比べる
+    const farmC = await mkUser("producer", "26");
+    await db.user.update({ where: { id: farmC }, data: { createdAt: new Date(Date.now() - 400 * 86_400_000) } });
+    const xc = await mkListing(farmC);
+    const oc = (await applyOrder(other, { listingId: xc.id, grams: 1000, method: "pickup", useDate: dayAfter2(), requestId: randomUUID() })) as { id: string };
+    await approveOrder(farmC, oc.id);
+    await mk(farmC);
+    await db.impression.createMany({ data: Array.from({ length: 20 }, () => ({ listingId: b1.id, producerId: farmB, grp: "match", position: 0 })) });
+    const r2 = await search(input, viewer, new Date());
+    expect(r2.groups.match.shown[0].producerId).toBe(farmC);
+  });
+});
+
 describe("他人の情報は見えない", () => {
   it("当事者でない人は、注文を見る・返事をする・メッセージを送ることができない", async () => {
     const l = await mkListing(producer);
-    const r = (await applyOrder(buyerA, { listingId: l.id, grams: 1000, method: "pickup", useDate: useDate(), requestId: randomUUID() })) as { id: string };
+    const me = await mkUser("buyer");
+    const r = (await applyOrder(me, { listingId: l.id, grams: 1000, method: "pickup", useDate: dayAfter2(), requestId: randomUUID() })) as { id: string };
     expect(await getOrderForParty(outsider, r.id)).toBeNull();
     expect((await cancelOrder(outsider, r.id)).ok).toBe(false);
     expect((await approveOrder(buyerB, r.id)).ok).toBe(false);
     expect((await sendMessage(outsider, r.id, "こんにちは", randomUUID())).ok).toBe(false);
-    expect((await sendMessage(buyerA, r.id, "<b>よろしく</b>", randomUUID())).ok).toBe(true);
+    expect((await sendMessage(me, r.id, "<b>よろしく</b>", randomUUID())).ok).toBe(true);
   });
 });

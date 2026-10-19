@@ -1,9 +1,11 @@
-// 商品の詳細。写真・農家さん・値段・残り・受け取り方法、そして申し込み
+// 商品の詳細（仕様 4章 A④）。写真・生産者プロフィール・単価と販売単位・量の内訳・期限・受け渡し条件、そして申し込み
 import { Suspense } from "react";
 import { notFound } from "next/navigation";
-import { OrderForm } from "@/components/listing/order-form";
+import { OrderForm, type MethodOption } from "@/components/listing/order-form";
+import { ReportForm } from "@/components/wanted/forms";
 import { DemoBadge, LinkButton, Notice, card } from "@/components/ui";
 import { dayText, formatDateTime, formatDay } from "@/lib/dates";
+import { bandsOf, methodFee, TEMP_LABEL } from "@/lib/delivery";
 import { formatKg, formatYen, kgTextToGrams } from "@/lib/money";
 import { placeLabel, prefName } from "@/lib/regions";
 import { getCurrentUser } from "@/lib/session";
@@ -28,43 +30,57 @@ async function Detail({ params, searchParams }: { params: PageProps<"/listings/[
   if (!l) notFound();
   const user = await getCurrentUser();
   const s = l.stock;
-  const back = new URLSearchParams(Object.entries({ kg: sp.kg, date: sp.date, method: sp.method }).filter(([, v]) => typeof v === "string") as [string, string][]).toString();
+  const bands = bandsOf(l.courierFees);
+  const courierText = bands.map((b) => `${formatKg(b.upToGrams)}まで ${formatYen(b.feeYen)}`).join("・");
+  const pref = user?.role === "buyer" ? user.prefecture : null;
+  const grams0 = typeof sp.kg === "string" ? kgTextToGrams(sp.kg) : null;
+  const methods: MethodOption[] = [];
+  if (l.courier) { const f = methodFee(l, "courier", pref, grams0 ?? l.minGrams); methods.push({ method: "courier", ok: f.ok || f.reason.includes("重さ"), reason: f.ok ? undefined : f.reason, bands, note: `${TEMP_LABEL[l.courierTemp ?? "normal"]}・発送から約${l.courierDays ?? 1}日で届きます` }); }
+  if (l.delivery) { const f = methodFee(l, "delivery", pref, l.minGrams); methods.push({ method: "delivery", ok: f.ok, reason: f.ok ? undefined : f.reason, feeYen: l.deliveryFeeYen ?? 0, note: `農家さんがお店まで届けます` }); }
+  if (l.pickup) methods.push({ method: "pickup", ok: true, feeYen: 0, note: `${placeLabel(l.pickupPref, l.pickupCity)}（くわしい場所は販売確定のあとにメッセージで）` });
   return (
     <div className="space-y-5">
-      <LinkButton href={`/search${back ? `?${back}` : ""}`} kind="plain" className="!w-auto">← 一覧に戻る</LinkButton>
+      <LinkButton href="/search" kind="plain" className="!w-auto">← 探す画面に戻る</LinkButton>
       <div className="overflow-hidden rounded-2xl bg-brand-soft">
         {l.hasPhoto ? (
           // eslint-disable-next-line @next/next/no-img-element
           <img src={`/api/photos/${l.id}`} alt={`${l.name}の写真`} className="aspect-[4/3] w-full object-cover" />
-        ) : (
-          <p className="flex aspect-[4/3] items-center justify-center text-sub">写真なし</p>
-        )}
+        ) : <p className="flex aspect-[4/3] items-center justify-center text-sub">写真なし</p>}
       </div>
       <div className="space-y-2">
         {l.isDemo && <DemoBadge />}
         <h1 className="text-2xl font-bold">{l.name}{l.variety && <span className="text-xl font-normal">（{l.variety}）</span>}</h1>
-        <p className="text-xl"><b>1kg {formatYen(l.pricePerKg)}</b></p>
+        <p className="text-xl"><b>1kg {formatYen(l.pricePerKg)}</b>・{l.allowPartial ? `${formatKg(l.minGrams)}から${formatKg(l.unitGrams)}ずつ` : "全量での販売"}</p>
+        {l.surplusReason && <p>余剰理由：{l.surplusReason}</p>}
         {l.description && <p className="whitespace-pre-wrap">{l.description}</p>}
       </div>
 
-      <section className={card} aria-labelledby="farm">
-        <h2 id="farm" className="text-lg font-bold">農家さん</h2>
-        <p className="text-lg">{l.producer.name}（{placeLabel(l.producer.prefecture, l.producer.city)}）</p>
-        {l.producer.intro && <p className="mt-1 whitespace-pre-wrap text-base">{l.producer.intro}</p>}
+      <section className={`${card} space-y-2`} aria-labelledby="farm">
+        <h2 id="farm" className="text-lg font-bold">生産者</h2>
+        <div className="flex items-center gap-3">
+          {l.producer.photo && (
+            // eslint-disable-next-line @next/next/no-img-element
+            <img src={`/api/photos/user/${l.producer.id}`} alt={`${l.producer.name}の写真`} className="h-16 w-16 rounded-full object-cover" />
+          )}
+          <p className="text-lg">{l.producer.name}<br /><span className="text-base">{placeLabel(l.producer.prefecture, l.producer.city)}</span></p>
+        </div>
+        {l.producer.items && <p className="text-base">栽培している品目：{l.producer.items}</p>}
+        {l.producer.intro && <p className="whitespace-pre-wrap text-base">こだわり：{l.producer.intro}</p>}
       </section>
 
       <section className={card} aria-labelledby="stock">
-        <h2 id="stock" className="text-lg font-bold">量と受け渡し</h2>
+        <h2 id="stock" className="text-lg font-bold">量・期限・受け渡し</h2>
         <dl className="mt-1 grid grid-cols-[auto_1fr] gap-x-4 gap-y-1">
-          <dt className="font-bold">いま申し込める量</dt><dd className="font-bold">{formatKg(s.availableGrams)}</dd>
-          <dt>出品した量</dt><dd>{formatKg(s.totalGrams)}</dd>
-          <dt>販売確定</dt><dd>{formatKg(s.soldGrams)}</dd>
-          <dt>返事待ちで取り置き中</dt><dd>{formatKg(s.heldGrams)}</dd>
-          <dt>注文の単位</dt><dd>{formatKg(l.minGrams)} から {formatKg(l.unitGrams)} ずつ</dd>
-          <dt>受け渡しの期間</dt><dd>{formatDay(l.availableFrom)}〜{formatDay(l.availableUntil)}</dd>
-          <dt>受付の締め切り</dt><dd>{formatDateTime(l.acceptUntil)}</dd>
-          <dt>引き取り</dt><dd>{l.pickup ? `できます（${placeLabel(l.pickupPref, l.pickupCity)}・料金0円）` : "していません"}</dd>
-          <dt>お届け</dt><dd>{l.delivery ? `できます（送料 ${formatYen(l.deliveryFeeYen ?? 0)}・${l.deliveryPrefs.map(prefName).join("、")}）` : "していません"}</dd>
+          <dt className="font-bold">申し込める量</dt><dd className="font-bold">{formatKg(s.availableGrams)}</dd>
+          <dt>出品総量</dt><dd>{formatKg(s.totalGrams)}</dd>
+          <dt>購入希望の集計（仮押さえ）</dt><dd>{formatKg(s.heldGrams)}</dd>
+          <dt>販売確定量</dt><dd>{formatKg(s.soldGrams)}</dd>
+          <dt>納品できる期間</dt><dd>{formatDay(l.availableFrom)}〜{formatDay(l.availableUntil)}</dd>
+          <dt>購入希望の受付期限</dt><dd>{formatDateTime(l.acceptUntil)}</dd>
+          <dt>生産者の回答期限</dt><dd>{formatDateTime(l.replyUntil)}</dd>
+          <dt>宅配発送</dt><dd>{l.courier ? `${courierText}（${TEMP_LABEL[l.courierTemp ?? "normal"]}・${l.courierPrefs.map(prefName).join("、")}）` : "していません"}</dd>
+          <dt>農家さんが配達</dt><dd>{l.delivery ? `配達料 ${formatYen(l.deliveryFeeYen ?? 0)}（${l.deliveryPrefs.map(prefName).join("、")}${l.deliveryMaxOrders ? `・${l.deliveryMaxOrders}件まで` : ""}）` : "していません"}</dd>
+          <dt>畑で引き取り</dt><dd>{l.pickup ? `できます（${placeLabel(l.pickupPref, l.pickupCity)}・料金0円）` : "していません"}</dd>
         </dl>
       </section>
 
@@ -81,16 +97,12 @@ async function Detail({ params, searchParams }: { params: PageProps<"/listings/[
           <Notice title="農家のアカウントでは申し込めません">お店のアカウントでログインしてください。</Notice>
         ) : (
           <OrderForm
-            l={{
-              id: l.id, name: l.name, pricePerKg: l.pricePerKg, minGrams: l.minGrams, unitGrams: l.unitGrams, availableGrams: s.availableGrams,
-              pickup: l.pickup, pickupPlace: placeLabel(l.pickupPref, l.pickupCity), delivery: l.delivery, deliveryFeeYen: l.deliveryFeeYen ?? 0,
-              deliveryOk: !!user.prefecture && l.deliveryPrefs.includes(user.prefecture),
-              availableFrom: dayText(l.availableFrom), availableUntil: dayText(l.availableUntil), replyHours: l.replyHours,
-            }}
-            initial={{ grams: typeof sp.kg === "string" ? kgTextToGrams(sp.kg) : null, date: typeof sp.date === "string" ? sp.date : "", method: typeof sp.method === "string" ? sp.method : "" }}
+            l={{ id: l.id, pricePerKg: l.pricePerKg, minGrams: l.minGrams, unitGrams: l.unitGrams, availableGrams: s.availableGrams, allowPartial: l.allowPartial, methods, availableFrom: dayText(l.availableFrom), availableUntil: dayText(l.availableUntil), replyUntilText: formatDateTime(l.replyUntil) }}
+            initial={{ grams: grams0, date: typeof sp.date === "string" ? sp.date : "" }}
           />
         )}
       </section>
+      {user && user.id !== l.producerId && <ReportForm type="listing" id={l.id} />}
     </div>
   );
 }

@@ -7,7 +7,7 @@ export default function Home() {
   return (
     <main className="space-y-8">
       <section className="space-y-3">
-        <h1 className="text-2xl font-bold">地元の農家さんの野菜を、必要な量だけ</h1>
+        <h1 className="text-2xl font-bold">地元の野菜を、必要な量で。農家と店をつなぐ</h1>
         <p>関西の農家さんが出品した野菜を、お店が必要な量だけ申し込めます。</p>
       </section>
       <Suspense fallback={<div className="h-40" />}>
@@ -18,8 +18,8 @@ export default function Home() {
         <ol className="space-y-3">
           {[
             ["1", "お店が「購入希望」を送る", "この時点では、まだ確定していません。量は取り置き（仮押さえ）されます。"],
-            ["2", "農家さんが返事をする", "「売ります」「量を変えて提案」「今回は見送り」のどれかです。"],
-            ["3", "双方が条件に合意すると「販売確定」", "量・金額・受け取り方法が決まります。支払いと受け渡しはアプリの外で行います。"],
+            ["2", "農家さんが回答する", "「承認」「条件を変えて提案」「見送り」のどれかです。回答期限までに回答がないと期限切れになります。"],
+            ["3", "双方が条件に合意すると「販売確定」", "数量・合計金額・受け渡し条件が決まります。支払いと配送はアプリの外で行います。"],
           ].map(([n, t, d]) => (
             <li key={n} className="flex gap-3">
               <span className="flex h-9 w-9 shrink-0 items-center justify-center rounded-full bg-brand-strong text-lg font-bold text-white">{n}</span>
@@ -37,7 +37,7 @@ async function MainAction() {
   if (user?.role === "producer") {
     return (
       <div className="space-y-3">
-        <LinkButton href="/producer/listings/new">野菜を出品する</LinkButton>
+        <LinkButton href="/producer/listings/new">新しく出品する</LinkButton>
         <LinkButton href="/producer/orders" kind="secondary">届いた購入希望を見る</LinkButton>
       </div>
     );
@@ -50,7 +50,8 @@ async function MainAction() {
       ) : (
         <div className="space-y-2">
           <LinkButton href="/signup" kind="secondary">はじめての方（登録する）</LinkButton>
-          <p className="text-center text-base text-sub">農家さんは、登録して出品できます。</p>
+          <LinkButton href="/signup?role=producer" kind="plain">野菜を販売する（農家さん）</LinkButton>
+          <p className="text-center text-base text-sub">関西（2府4県）のお店と農家さんが対象です。</p>
         </div>
       )}
     </div>

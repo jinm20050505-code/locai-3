@@ -1,0 +1,207 @@
+// LocAI.3 のデータベースの設計図。
+// 金額は円・数量はグラムの整数で持つ（小数で計算しない）。
+
+generator client {
+  provider = "prisma-client"
+  output   = "../src/generated/prisma"
+}
+
+// 接続先は prisma.config.ts に書く（Prisma 7 の決まり）
+datasource db {
+  provider = "postgresql"
+}
+
+// ---------------------------------------------------------------------------
+// ログイン（Better Auth）が使う表。列の構成は Better Auth の決まりに合わせる
+
+model User {
+  id             String    @id
+  name           String // 表示名（店名・農園名）
+  email          String    @unique
+  emailVerified  Boolean   @default(false)
+  image          String?
+  createdAt      DateTime  @default(now())
+  updatedAt      DateTime  @updatedAt
+  // 役割：buyer（飲食店）／producer（生産者）。登録したあとは変えられない
+  role           String
+  // 地域（飲食店：お店の場所／生産者：産地）。府県と市区町村まで。詳しい住所は持たない
+  prefecture     String?
+  city           String?
+  // 生産者のこだわり（任意）
+  intro          String?
+  // デモ用の架空のアカウント
+  isDemo         Boolean   @default(false)
+  sessions       Session[]
+  accounts       Account[]
+  listings       Listing[]
+  ordersAsBuyer  Order[]   @relation("OrderBuyer")
+  ordersAsSeller Order[]   @relation("OrderProducer")
+  messages       Message[]
+  aiCalls        AiCall[]
+
+  @@map("user")
+}
+
+model Session {
+  id        String   @id
+  expiresAt DateTime
+  token     String   @unique
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+  ipAddress String?
+  userAgent String?
+  userId    String
+  user      User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@index([userId])
+  @@map("session")
+}
+
+model Account {
+  id                    String    @id
+  accountId             String
+  providerId            String
+  userId                String
+  user                  User      @relation(fields: [userId], references: [id], onDelete: Cascade)
+  accessToken           String?
+  refreshToken          String?
+  idToken               String?
+  accessTokenExpiresAt  DateTime?
+  refreshTokenExpiresAt DateTime?
+  scope                 String?
+  password              String?
+  createdAt             DateTime  @default(now())
+  updatedAt             DateTime  @updatedAt
+
+  @@index([userId])
+  @@map("account")
+}
+
+model Verification {
+  id         String   @id
+  identifier String
+  value      String
+  expiresAt  DateTime
+  createdAt  DateTime @default(now())
+  updatedAt  DateTime @updatedAt
+
+  @@index([identifier])
+  @@map("verification")
+}
+
+// ---------------------------------------------------------------------------
+// 出品
+
+model Listing {
+  id             String        @id @default(uuid())
+  producerId     String
+  producer       User          @relation(fields: [producerId], references: [id])
+  name           String // 野菜の名前（例：なす）
+  variety        String? // 品種（例：賀茂茄子）
+  description    String? // ひとこと（育て方・おすすめの使い方）
+  totalGrams     Int // 出品する量
+  minGrams       Int // いちばん少ない注文量
+  unitGrams      Int // 注文の単位（例：500g ずつ）
+  pricePerKg     Int // 1kg あたりの値段（円）
+  availableFrom  DateTime      @db.Date // 受け渡しできる最初の日
+  availableUntil DateTime      @db.Date // 受け渡しできる最後の日
+  acceptUntil    DateTime // 購入希望の受付の締め切り
+  replyHours     Int // 生産者が返事をするまでの時間（購入希望を受けてから）
+  // 受け取り方法：引き取り（お店が畑へ。料金0円）／お届け（生産者が届ける。送料は固定）
+  pickup         Boolean
+  pickupPref     String?
+  pickupCity     String?
+  delivery       Boolean
+  deliveryFeeYen Int?
+  deliveryPrefs  String[] // お届けできる府県のコード
+  status         String // open（受付中）／paused（一時停止）／closed（受付終了）
+  isDemo         Boolean       @default(false)
+  createdAt      DateTime      @default(now())
+  updatedAt      DateTime      @updatedAt
+  photo          ListingPhoto?
+  orders         Order[]
+
+  @@index([status, acceptUntil])
+  @@map("listing")
+}
+
+// 出品の写真（1枚）。一覧で重くならないよう、別の表に分ける
+model ListingPhoto {
+  listingId String   @id
+  listing   Listing  @relation(fields: [listingId], references: [id], onDelete: Cascade)
+  mime      String
+  data      Bytes
+  createdAt DateTime @default(now())
+
+  @@map("listing_photo")
+}
+
+// ---------------------------------------------------------------------------
+// 購入希望（注文）
+// status：pending（返事待ち）→ confirmed（販売確定）／changeRequested（条件変更の確認待ち）／declined（見送り）
+//         ／cancelled（取消）／expired（期限切れ）。
+// 仮押さえは pending と changeRequested の間だけ（期限内）。heldGrams がその量
+
+model Order {
+  id                  String    @id @default(uuid())
+  listingId           String
+  listing             Listing   @relation(fields: [listingId], references: [id])
+  buyerId             String
+  buyer               User      @relation("OrderBuyer", fields: [buyerId], references: [id])
+  producerId          String
+  producer            User      @relation("OrderProducer", fields: [producerId], references: [id])
+  requestId           String // 同じ送信を2回受けても1件にするための番号（画面で作る）
+  status              String
+  method              String // pickup／delivery
+  pricePerKg          Int // 申し込んだときの値段（あとで出品の値段が変わっても変えない）
+  quantityGrams       Int
+  subtotalYen         Int
+  feeYen              Int
+  totalYen            Int
+  heldGrams           Int // 仮押さえしている量（終わった注文は 0）
+  useDate             DateTime  @db.Date
+  replyDeadline       DateTime // 生産者の返事の期限
+  // 条件変更の提案（生産者から）
+  proposedGrams       Int?
+  proposedSubtotalYen Int?
+  proposedTotalYen    Int?
+  proposalNote        String?
+  decidedAt           DateTime?
+  createdAt           DateTime  @default(now())
+  updatedAt           DateTime  @updatedAt
+  messages            Message[]
+
+  @@unique([buyerId, requestId])
+  @@index([listingId, status])
+  @@index([buyerId, createdAt])
+  @@index([producerId, createdAt])
+  @@map("order")
+}
+
+// 注文ごとのメッセージ（注文の当事者2人だけが読める）
+model Message {
+  id        String   @id @default(uuid())
+  orderId   String
+  order     Order    @relation(fields: [orderId], references: [id], onDelete: Cascade)
+  senderId  String
+  sender    User     @relation(fields: [senderId], references: [id])
+  body      String
+  requestId String
+  createdAt DateTime @default(now())
+
+  @@unique([senderId, requestId])
+  @@index([orderId, createdAt])
+  @@map("message")
+}
+
+// AI を呼んだ記録（回数の上限のため）
+model AiCall {
+  id        String   @id @default(uuid())
+  userId    String
+  user      User     @relation(fields: [userId], references: [id])
+  kind      String
+  createdAt DateTime @default(now())
+
+  @@index([userId, createdAt])
+  @@map("ai_call")
+}

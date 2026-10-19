@@ -1,0 +1,13 @@
+# 秘密情報（DB の接続文字列・キーなど）
+.env*
+!.env.example
+node_modules/
+.next/
+out/
+src/generated/
+*.tsbuildinfo
+next-env.d.ts
+tests/e2e/output/
+.vercel
+.DS_Store
+demo-accounts.local.txt

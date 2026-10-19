@@ -1,0 +1,41 @@
+@import "tailwindcss";
+
+/* 見やすさの基本：白地・濃い文字・緑。文字は 18px、補足も 16px 以上 */
+@theme {
+  --font-sans: "Hiragino Sans", "Hiragino Kaku Gothic ProN", "Noto Sans JP", "Yu Gothic", Meiryo, system-ui, sans-serif;
+  --text-xs: 1rem;
+  --text-xs--line-height: 1.6;
+  --text-sm: 1rem;
+  --text-sm--line-height: 1.6;
+  --text-base: 1.125rem;
+  --text-base--line-height: 1.7;
+  --text-lg: 1.25rem;
+  --text-lg--line-height: 1.6;
+  --text-xl: 1.5rem;
+  --text-xl--line-height: 1.5;
+  --text-2xl: 1.75rem;
+  --text-2xl--line-height: 1.4;
+  --color-brand: #06c755;        /* LINE のような明るい緑（線・目印に使う） */
+  --color-brand-strong: #00873c; /* ボタンの緑（白い文字が読める濃さ） */
+  --color-brand-dark: #006b30;
+  --color-brand-soft: #e8f8ee;
+  --color-ink: #1a1a1a;
+  --color-sub: #4b5563;
+  --color-line: #d1d5db;
+  --color-warn: #b42318;
+  --color-warn-soft: #fef3f2;
+  --color-note: #8a4b00;
+  --color-note-soft: #fff7e6;
+}
+
+html { font-size: 16px; }
+body {
+  background: #ffffff;
+  color: var(--color-ink);
+  font-family: var(--font-sans);
+  font-size: 1.125rem;
+  line-height: 1.7;
+}
+/* 押せる場所は、キーボードでも分かるように太い枠を出す */
+:focus-visible { outline: 3px solid #1d4ed8; outline-offset: 2px; }
+input, select, textarea { font-size: 1.125rem; }

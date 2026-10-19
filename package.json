@@ -1,0 +1,43 @@
+{
+  "name": "locai-3",
+  "version": "0.1.0",
+  "private": true,
+  "scripts": {
+    "dev": "next dev -p 3004",
+    "build": "prisma generate && next build",
+    "start": "next start -p 3004",
+    "lint": "eslint",
+    "typecheck": "prisma generate && next typegen && tsc --noEmit",
+    "postinstall": "prisma generate",
+    "db:migrate": "prisma migrate dev",
+    "db:seed": "node scripts/seed.mjs",
+    "test": "vitest run",
+    "test:db": "vitest run --config vitest.db.config.mts",
+    "test:e2e": "node tests/e2e/run.mjs"
+  },
+  "dependencies": {
+    "@google/genai": "2.29.1",
+    "@prisma/adapter-pg": "7.10.0",
+    "@prisma/client": "7.10.0",
+    "better-auth": "1.7.7",
+    "next": "16.4.0",
+    "pg": "^8.16.3",
+    "react": "19.3.0",
+    "react-dom": "19.3.0",
+    "zod": "^4.6.6"
+  },
+  "devDependencies": {
+    "@tailwindcss/turbopack": "^4",
+    "@types/node": "^24.19.2",
+    "@types/pg": "^8.15.5",
+    "@types/react": "^19",
+    "@types/react-dom": "^19",
+    "eslint": "^9",
+    "eslint-config-next": "16.4.0",
+    "playwright": "1.63.0",
+    "prisma": "7.10.0",
+    "tailwindcss": "^4",
+    "typescript": "^5",
+    "vitest": "^5.0.4"
+  }
+}

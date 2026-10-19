@@ -18,7 +18,10 @@
     "db:backup": "bash scripts/db-backup.sh",
     "db:restore": "bash scripts/db-restore.sh",
     "report:exposure": "node scripts/report-exposure.mjs",
-    "report:metrics": "node scripts/report-metrics.mjs"
+    "report:metrics": "node scripts/report-metrics.mjs",
+    "verify:restore": "node scripts/db-manifest.mjs",
+    "migrate:pack": "bash scripts/migrate-pack.sh",
+    "migrate:finish": "bash scripts/migrate-finish.sh"
   },
   "dependencies": {
     "@google/genai": "2.29.1",

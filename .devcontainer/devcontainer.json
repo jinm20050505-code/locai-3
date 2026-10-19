@@ -1,0 +1,26 @@
+{
+  // LocAI.3 専用の開発コンテナ。DB（写真を含む）は Docker のボリュームに置くので、コンテナを作り直しても残る
+  "name": "LocAI.3",
+  "image": "mcr.microsoft.com/devcontainers/base:bookworm",
+  "features": {
+    "ghcr.io/devcontainers/features/node:1": { "version": "lts" },
+    "ghcr.io/devcontainers/features/git:1": { "version": "os-provided" },
+    "ghcr.io/anthropics/devcontainer-features/claude-code:1": {},
+    "ghcr.io/devcontainers/features/github-cli:1": {}
+  },
+  "overrideFeatureInstallOrder": ["ghcr.io/devcontainers/features/node", "ghcr.io/devcontainers/features/git", "ghcr.io/anthropics/devcontainer-features/claude-code"],
+  "remoteUser": "vscode",
+  "mounts": [
+    // DB のデータと設定（LocAI.3 専用。ほかのプロジェクトとは共有しない）
+    "source=locai3-pgdata,target=/var/lib/postgresql,type=volume",
+    "source=locai3-pgetc,target=/etc/postgresql,type=volume",
+    // Claude と GitHub CLI のログイン情報（LocAI.3 専用）
+    "source=locai3-claude-config,target=/home/vscode/.claude,type=volume",
+    "source=locai3-gh-config,target=/home/vscode/.config/gh,type=volume"
+  ],
+  "containerEnv": { "CLAUDE_CONFIG_DIR": "/home/vscode/.claude" },
+  "forwardPorts": [3004],
+  "postCreateCommand": "sudo chown -R vscode:vscode /home/vscode/.claude /home/vscode/.config && (gh auth status >/dev/null 2>&1 && gh auth setup-git || true) && npm install && bash scripts/dev-setup.sh",
+  "postStartCommand": "sudo service postgresql start",
+  "customizations": { "vscode": { "extensions": ["anthropic.claude-code"] } }
+}

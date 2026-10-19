@@ -13,7 +13,10 @@
     "db:seed": "node scripts/seed.mjs",
     "test": "vitest run",
     "test:db": "vitest run --config vitest.db.config.mts",
-    "test:e2e": "node tests/e2e/run.mjs"
+    "test:e2e": "node tests/e2e/run.mjs",
+    "setup": "bash scripts/dev-setup.sh",
+    "db:backup": "bash scripts/db-backup.sh",
+    "db:restore": "bash scripts/db-restore.sh"
   },
   "dependencies": {
     "@google/genai": "2.29.1",

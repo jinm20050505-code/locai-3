@@ -1,5 +1,6 @@
 // 画面の上の案内。役割ごとに、行き先を文字で並べる（アイコンだけにしない）
 import Link from "next/link";
+import Image from "next/image";
 import { getCurrentUser } from "@/lib/session";
 import { LogoutButton } from "./logout-button";
 
@@ -16,7 +17,7 @@ export async function Header() {
     <header className="border-b-4 border-brand bg-white">
       <div className="mx-auto flex max-w-3xl flex-wrap items-center justify-between gap-x-2 px-4 py-2">
         <Link href="/" className="inline-flex min-h-12 items-center gap-2 text-xl font-bold text-ink">
-          <span aria-hidden className="inline-block h-7 w-7 rounded-full bg-brand" />
+          <Image src="/brand/locai-komame-emblem-v1.webp" alt="" width={44} height={44} className="h-11 w-11 rounded-lg" priority />
           LocAI <span className="text-base font-normal text-sub">地元の野菜</span>
         </Link>
         {user && <p className="text-base text-sub">{user.name} さん</p>}

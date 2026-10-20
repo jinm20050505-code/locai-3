@@ -2,5 +2,6 @@
   "$schema": "https://openapi.vercel.sh/vercel.json",
   "regions": [
     "sin1"
-  ]
+  ],
+  "buildCommand": "npm run db:deploy && npm run build"
 }

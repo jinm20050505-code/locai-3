@@ -4,7 +4,7 @@
 
 ## 公開先の設定
 
-Vercel で GitHub の `jinm20050505-code/locai-3` を取り込む。Next.js としてビルドし、Build Command は `npm run build`。Node.js は24系を使用する。Production は main。
+Vercel で GitHub の `jinm20050505-code/locai-3` を取り込む。Next.js としてビルドし、Build Command は `vercel.json` の `npm run db:deploy && npm run build`。Node.js は24系を使用する。Production は main。
 
 LocAI.3専用の空のPostgreSQLを用意し、次の設定をVercelのProductionへ登録する。値はチャット・GitHub・ログに出さない。
 
@@ -16,7 +16,7 @@ LocAI.3専用の空のPostgreSQLを用意し、次の設定をVercelのProductio
 | GEMINI_API_KEY | Gemini のキー（任意） |
 | GEMINI_MODEL | 動作を確認したモデル名（任意。手元の確認では gemini-3.5-flash-lite） |
 
-DBへは既存の開発用 `.env.local` を書き換えず、別の作業環境で公開用の環境変数を設定して `npm run db:deploy` を実行する。6件の変更を反映し、データは自動では入れない。プレビューを使う場合は専用DBまたはDBブランチを割り当て、Productionと同じ接続先を登録しない。
+DBの表はVercelのビルド時に `npm run db:deploy` で反映する。Prismaの変更コマンドは `DATABASE_URL_UNPOOLED` を優先する。6件の変更を反映し、データは自動では入れない。手元の `.env.local` を本番の接続先に書き換えない。プレビューを使う場合は専用DBまたはDBブランチを割り当て、Productionと同じ接続先を登録しない。
 
 ## 公開前の確認
 
@@ -31,3 +31,7 @@ DBへは既存の開発用 `.env.local` を書き換えず、別の作業環境�
 通報は `npm run reports` で松田が毎日確認する。公開DBに対して使う場合は専用の作業環境で接続先を設定し、開発用設定を上書きしない。対応コマンドはREADME参照。現在、メール本人確認・パスワード再設定・アプリ内の運営管理画面はない。
 
 ローカルの架空デモデータを作る `db:seed` は外部DBへ書き込めない。本番へ持ち込む場合は、別途対象と内容を確認した移行が必要。バックアップや利用者情報を含む開発DBを丸ごとコピーしない。
+
+## 今回の公開先
+
+Vercel：`test11-76c3/locai-3`。DB：`locai-3-prod`（Neon・Singapore・Free）。DBの接続先はProductionだけに登録し、DevelopmentとPreviewには登録していない。関数のリージョンはsin1。公開ドメイン：`locai-3.vercel.app`。旧版のプロジェクトとDBは変更しない。

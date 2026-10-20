@@ -1,6 +1,7 @@
 import { Suspense } from "react";
 import { redirect } from "next/navigation";
 import { AccountForm } from "@/components/auth/account-form";
+import { LogoutButton } from "@/components/logout-button";
 import { Notice } from "@/components/ui";
 import { getDb } from "@/lib/db";
 import { getCurrentUser } from "@/lib/session";
@@ -25,6 +26,7 @@ async function Body({ searchParams }: { searchParams: PageProps<"/account">["sea
       {sp.done && <Notice kind="ok" title="保存しました" />}
       {sp.welcome && user.role === "producer" && <Notice title="登録ありがとうございます。まず生産者プロフィールを作りましょう">写真・栽培している品目・こだわりは、お店の候補の画面に表示されます。あとからでも書けます。保存したら「出品一覧」から出品できます。</Notice>}
       <AccountForm role={user.role} name={user.name} pref={user.prefecture ?? ""} city={user.city ?? ""} intro={u.intro ?? ""} items={u.items ?? ""} hasPhoto={!!u.photo} userId={user.id} />
+      <div className="border-t border-line pt-5"><LogoutButton className="inline-flex min-h-12 w-full items-center justify-center rounded-xl border-2 border-line px-4 py-3 font-bold text-sub" /></div>
     </>
   );
 }

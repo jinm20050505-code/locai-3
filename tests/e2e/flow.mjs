@@ -23,7 +23,7 @@ async function page(opts) {
   p.setDefaultTimeout(30000);
   p.on("console", (m) => m.type() === "error" && errs.push(m.text()));
   p.on("dialog", (d) => d.accept());
-  p.on("pageerror", (e) => errs.push(`pageerror: ${e.message}`));
+  p.on("pageerror", (e) => errs.push(`pageerror (${p.url()}): ${e.message}`));
   return p;
 }
 const main = (p) => p.locator("main:visible").first();
@@ -291,7 +291,8 @@ try {
   await bp.goto(`${B}/search`);
   await bp.getByLabel("食材の名前").fill("消える下書き");
   await bp.waitForTimeout(300);
-  await bp.getByRole("button", { name: "ログアウト" }).click();
+  await bp.getByRole("navigation", { name: "下のメニュー" }).getByRole("link", { name: "マイページ", exact: true }).click();
+  await bp.locator("main:visible").getByRole("button", { name: "ログアウト", exact: true }).click();
   await bp.waitForURL(/\/$/);
   ok("ログアウトすると、下書きが消える", (await bp.evaluate(() => Object.keys(localStorage).filter((k) => k.startsWith("locai3:draft:")).length)) === 0);
 
@@ -328,3 +329,5 @@ try {
   if (errs.length) console.log(errs.slice(0, 5).join("\n"));
   await browser.close();
 }
+
+if (errs.length || res.some((line) => line.startsWith("NG"))) process.exitCode = 1;

@@ -10,8 +10,8 @@ export async function Header() {
   const links = !user
     ? [{ href: "/search", label: "野菜を探す" }, { href: "/login", label: "ログイン" }]
     : user.role === "buyer"
-      ? [{ href: "/search", label: "野菜を探す" }, { href: "/orders", label: "マイページ" }, { href: "/wanted", label: "探しています" }, { href: "/account", label: "お店の情報" }]
-      : [{ href: "/producer", label: "出品一覧" }, { href: "/producer/orders", label: "購入希望" }, { href: "/producer/wanted", label: "探しています" }, { href: "/account", label: "プロフィール" }];
+      ? [{ href: "/search", label: "野菜を探す" }, { href: "/orders", label: "注文" }, { href: "/wanted", label: "探しています" }, { href: "/account", label: "マイページ" }]
+      : [{ href: "/producer", label: "出品一覧" }, { href: "/producer/orders", label: "購入希望" }, { href: "/producer/wanted", label: "探しています" }, { href: "/account", label: "マイページ" }];
   return (
     <header className="border-b-4 border-brand bg-white">
       <div className="mx-auto flex max-w-3xl flex-wrap items-center justify-between gap-x-2 px-4 py-2">
@@ -21,7 +21,7 @@ export async function Header() {
         </Link>
         {user && <p className="text-base text-sub">{user.name} さん</p>}
       </div>
-      <nav aria-label="メニュー" className="mx-auto flex max-w-3xl flex-wrap items-center gap-1 px-2 pb-1">
+      <nav aria-label="メニュー" className="mx-auto hidden max-w-3xl flex-wrap items-center gap-1 px-2 pb-1 md:flex">
         {links.map((l) => (
           <Link key={l.href} href={l.href} className={nav}>{l.label}</Link>
         ))}

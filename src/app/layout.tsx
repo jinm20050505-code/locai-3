@@ -1,6 +1,7 @@
 import type { Metadata, Viewport } from "next";
 import { Suspense } from "react";
 import { Header } from "@/components/header";
+import { AppCompanion } from "@/components/guide/app-companion";
 import "./globals.css";
 
 export const metadata: Metadata = {
@@ -12,7 +13,8 @@ export const viewport: Viewport = { width: "device-width", initialScale: 1 };
 export default function RootLayout({ children }: LayoutProps<"/">) {
   return (
     <html lang="ja">
-      <body className="flex min-h-screen flex-col">
+      <body className="app-with-companion flex min-h-screen flex-col">
+        <div className="app-page-region">
         <Suspense fallback={<div className="h-28 border-b-4 border-brand" />}>
           <Header />
         </Suspense>
@@ -21,6 +23,8 @@ export default function RootLayout({ children }: LayoutProps<"/">) {
           このデモの農家さん・野菜・お店はすべて架空です。実際の販売は行いません。<br />
           お金の支払いと配送の手配は、アプリの外で行います。
         </footer>
+        </div>
+        <Suspense fallback={null}><AppCompanion /></Suspense>
       </body>
     </html>
   );

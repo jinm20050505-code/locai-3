@@ -1,5 +1,6 @@
 // 出品に紐づく相談（注文の前の質問と返信）。サーバー側だけ。
 // その店と、出品した生産者の2人だけが読める。ほかの店の相談は見えない
+import { messageNotification } from "@/server/notifications";
 import { getDb } from "@/lib/db";
 
 type R = { ok: true } | { ok: false; problem: string };
@@ -25,7 +26,7 @@ export async function postListingMessage(userId: string, listingId: string, buye
   if (!t) return { ok: false, problem: "相談の内容を入れてください" };
   if (t.length > 500) return { ok: false, problem: `500文字以内にしてください（今 ${t.length}文字）` };
   const db = getDb();
-  const [u, l] = await Promise.all([db.user.findUnique({ where: { id: userId }, select: { role: true } }), db.listing.findUnique({ where: { id: listingId }, select: { producerId: true } })]);
+  const [u, l] = await Promise.all([db.user.findUnique({ where: { id: userId }, select: { role: true } }), db.listing.findUnique({ where: { id: listingId }, select: { producerId: true, name: true } })]);
   if (!u || !l) return { ok: false, problem: "出品が見つかりません" };
   if (u.role === "buyer" && buyerId !== userId) return { ok: false, problem: "自分の相談にだけ書けます" };
   if (u.role === "producer") {
@@ -34,7 +35,11 @@ export async function postListingMessage(userId: string, listingId: string, buye
   }
   if ((await db.listingMessage.count({ where: { senderId: userId, createdAt: { gt: new Date(now.getTime() - 60_000) } } })) >= 10) return { ok: false, problem: "短い時間に続けて送られています。1分ほど待ってから、もう一度お試しください" };
   try {
-    await db.listingMessage.create({ data: { listingId, buyerId, senderId: userId, body: t, requestId } });
+    await db.$transaction(async tx => {
+      const m = await tx.listingMessage.create({ data: { listingId, buyerId, senderId: userId, body: t, requestId } });
+      await messageNotification(tx, { id: m.id, userId: userId === l.producerId ? buyerId : l.producerId, senderId: userId,
+        href: userId === l.producerId ? `/listings/${listingId}#consultation` : `/producer/listings/${listingId}/messages`, listingName: l.name }, now);
+    });
   } catch (e) {
     if ((e as { code?: string }).code !== "P2002") throw e; // 同じ送信の2回目は1件にまとめる
   }

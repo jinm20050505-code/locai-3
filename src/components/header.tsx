@@ -2,6 +2,7 @@
 import Link from "next/link";
 import Image from "next/image";
 import { getCurrentUser } from "@/lib/session";
+import { Bell } from "./notifications/bell";
 import { LogoutButton } from "./logout-button";
 
 const nav = "inline-flex min-h-12 items-center rounded-lg px-3 text-base font-bold text-brand-dark underline-offset-4 hover:underline";
@@ -18,9 +19,9 @@ export async function Header() {
       <div className="mx-auto flex max-w-3xl flex-wrap items-center justify-between gap-x-2 px-4 py-2">
         <Link href="/" className="inline-flex min-h-12 items-center gap-2 text-xl font-bold text-ink">
           <Image src="/brand/locai-komame-emblem-v1.webp" alt="" width={44} height={44} className="h-11 w-11 rounded-lg" priority />
-          LocAI <span className="text-base font-normal text-sub">地元の野菜</span>
+          LocAI <span className="hidden text-base font-normal text-sub sm:inline">地元の野菜</span>
         </Link>
-        {user && <p className="text-base text-sub">{user.name} さん</p>}
+        {user && <div className="flex min-w-0 items-center gap-2"><p className="hidden max-w-64 truncate text-base text-sub md:block">{user.name} さん</p><Bell key={user.id} /></div>}
       </div>
       <nav aria-label="メニュー" className="mx-auto hidden max-w-3xl flex-wrap items-center gap-1 px-2 pb-1 md:flex">
         {links.map((l) => (

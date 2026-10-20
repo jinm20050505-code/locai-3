@@ -1,7 +1,8 @@
 "use server";
 
 // 出品の作成・状態の変更（サーバー側で実行）
-import { connection } from "next/server";
+import { after, connection } from "next/server";
+import { flushPush } from "@/server/push";
 import { redirect } from "next/navigation";
 import { z } from "zod";
 import { validateListing, type FieldErrors } from "@/lib/listing-rules";
@@ -24,6 +25,7 @@ export async function createListingAction(_: ListingState, fd: FormData): Promis
   const user = await requireRole("producer");
   const { v, photo, errors } = await readListingForm(fd);
   if (!v.ok || Object.keys(errors).length) return { errors };
+  after(flushPush);
   const l = await createListing(user.id, v.value, photo);
   redirect(`/producer?done=created&id=${l.id}`);
 }

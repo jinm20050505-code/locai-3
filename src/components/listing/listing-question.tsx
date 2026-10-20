@@ -47,7 +47,7 @@ export function MessageList({ messages, otherName }: { messages: Msg[]; otherNam
 
 export function ListingQuestion({ listingId, buyerId, messages, producerName }: { listingId: string; buyerId: string; messages: Msg[]; producerName: string }) {
   return (
-    <details open={messages.length > 0} className="rounded-xl border-2 border-line p-3">
+    <details id="consultation" open={messages.length > 0} className="rounded-xl border-2 border-line p-3">
       <summary className="min-h-12 cursor-pointer py-2 text-lg font-bold text-brand-dark">この出品について農家さんに相談する（{messages.length}件）</summary>
       <div className="mt-2 space-y-3">
         <p className="text-base text-sub">あなたと農家さんの2人だけが読めます。電話番号や口座番号は書かないでください。</p>

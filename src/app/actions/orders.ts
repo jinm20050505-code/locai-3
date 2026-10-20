@@ -2,7 +2,8 @@
 
 // 購入希望の送信と、注文への返事・取消・メッセージ（サーバー側で実行）。金額は受け取らず、サーバーで計算する
 import { refresh } from "next/cache";
-import { connection } from "next/server";
+import { after, connection } from "next/server";
+import { flushPush } from "@/server/push";
 import { redirect } from "next/navigation";
 import { z } from "zod";
 import { parseDay } from "@/lib/dates";
@@ -24,6 +25,7 @@ export async function applyAction(_: ActionState, fd: FormData): Promise<ActionS
   const useDate = parseDay(get(fd, "useDate"));
   if (!uuid.safeParse(listingId).success || !uuid.safeParse(requestId).success || !Number.isInteger(grams)) return bad;
   if (!useDate) return { problems: ["受け取る日を選んでください"] };
+  after(flushPush);
   const r = await applyOrder(user.id, { listingId, grams, method: get(fd, "method"), useDate, requestId, receiveSlot: get(fd, "receiveSlot") || null });
   if (!r.ok) return { problems: r.problems };
   redirect(`/orders/${r.id}?done=sent`);
@@ -34,6 +36,7 @@ async function decide(fd: FormData, fn: (userId: string, orderId: string) => Pro
   const user = await requireRole(role);
   const id = get(fd, "orderId");
   if (!uuid.safeParse(id).success) return bad;
+  after(flushPush);
   const r = await fn(user.id, id);
   if (!r.ok) return { problems: r.problems };
   redirect(`/orders/${id}?done=${done}`);
@@ -54,6 +57,7 @@ export async function proposeAction(_: ActionState, fd: FormData): Promise<Actio
   const feeText = get(fd, "fee").trim();
   const fee = feeText === "" ? null : /^\d{1,6}$/.test(feeText.replace(/[,円]/g, "")) ? Number(feeText.replace(/[,円]/g, "")) : NaN;
   if (Number.isNaN(fee)) return { problems: ["送料は円の数字で入れてください（例：800）"] };
+  after(flushPush);
   const r = await proposeChange(user.id, id, grams, get(fd, "note").trim(), new Date(), fee);
   if (!r.ok) return { problems: r.problems };
   redirect(`/orders/${id}?done=proposed`);
@@ -66,6 +70,7 @@ export async function messageAction(_: ActionState, fd: FormData): Promise<Actio
   const id = get(fd, "orderId");
   const requestId = get(fd, "requestId");
   if (!uuid.safeParse(id).success || !uuid.safeParse(requestId).success) return bad;
+  after(flushPush);
   const r = await sendMessage(user.id, id, get(fd, "body"), requestId);
   if (!r.ok) return { problems: r.problems };
   redirect(`/orders/${id}?done=message#messages`);
@@ -79,6 +84,7 @@ export async function approveAllAction(_: BulkState, fd: FormData): Promise<Bulk
   const user = await requireRole("producer");
   const id = get(fd, "listingId");
   if (!uuid.safeParse(id).success) return { problem: "画面を開き直して、もう一度お試しください" };
+  after(flushPush);
   const results = await approveAll(user.id, id);
   refresh();
   return results.length ? { results: results.map(({ buyer, ok, problem }) => ({ buyer, ok, problem })) } : { problem: "承認できる回答待ちの購入希望はありません" };

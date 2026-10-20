@@ -1,6 +1,7 @@
 // 購入希望（注文）の処理（サーバー側だけ）。
 // 在庫にかかわる処理は、出品の行をロックした1つのトランザクションの中で、確かめてから書き込む（同時の申し込みでも売りすぎない）。
 // 金額は画面から受け取らず、ここで計算する。
+import { expireListingOrders, orderNotification, messageNotification } from "@/server/notifications";
 import { getDb } from "@/lib/db";
 import { subtotalYen } from "@/lib/money";
 import { deliveryDayOk, methodFee, METHODS, SLOT_LABEL, WEEKDAY_LABEL, type Method } from "@/lib/delivery";
@@ -14,7 +15,7 @@ const fail = (...problems: string[]) => ({ ok: false as const, problems });
 /** 出品の行をロックし、期限を過ぎた仮押さえを「期限切れ」に確定する */
 async function lockListing(tx: Tx, listingId: string, now: Date) {
   await tx.$queryRaw`SELECT id FROM "listing" WHERE id = ${listingId} FOR UPDATE`;
-  await tx.order.updateMany({ where: { listingId, status: { in: [...ACTIVE] }, replyDeadline: { lte: now } }, data: { status: "expired", heldGrams: 0 } });
+  await expireListingOrders(tx, listingId, now);
 }
 
 async function stockInTx(tx: Tx, listingId: string, totalGrams: number, now: Date) {
@@ -72,8 +73,8 @@ export async function applyOrder(buyerId: string, input: ApplyInput, now = new D
           pricePerKg: l.pricePerKg, quantityGrams: input.grams, subtotalYen: sub, feeYen, totalYen: sub + feeYen, heldGrams: input.grams,
           useDate: input.useDate, replyDeadline: l.replyUntil, feePending: fee.quote, receiveSlot: slot,
         },
-        select: { id: true },
-      });
+        });
+      await orderNotification(tx, o, "pending", now);
       return { ok: true, id: o.id };
     });
   } catch (e) {
@@ -95,7 +96,12 @@ async function withOrder(orderId: string, who: { buyerId?: string; producerId?: 
   return db.$transaction(async (tx) => {
     await lockListing(tx, first.listingId, now);
     const o = await tx.order.findUniqueOrThrow({ where: { id: orderId } });
-    return fn(tx, o, effectiveStatus(o, now));
+    const result = await fn(tx, o, effectiveStatus(o, now));
+    if (result.ok) {
+      const updated = await tx.order.findUniqueOrThrow({ where: { id: o.id } });
+      if (updated.status !== o.status) await orderNotification(tx, updated, updated.status, now);
+    }
+    return result;
   });
 }
 
@@ -209,13 +215,17 @@ export async function sendMessage(userId: string, orderId: string, body: string,
   if (!t) return fail("メッセージを入れてください");
   if (t.length > 500) return fail(`500文字以内にしてください（今 ${t.length}文字）`);
   const db = getDb();
-  const o = await db.order.findFirst({ where: { id: orderId, OR: [{ buyerId: userId }, { producerId: userId }] }, select: { status: true, replyDeadline: true } });
+  const o = await db.order.findFirst({ where: { id: orderId, OR: [{ buyerId: userId }, { producerId: userId }] }, select: { status: true, replyDeadline: true, buyerId: true, producerId: true, listing: { select: { name: true } } } });
   if (!o) return fail("注文が見つかりません");
   const s = effectiveStatus(o, now);
   if (!["pending", "changeRequested", "confirmed"].includes(s)) return fail("この注文は終わったため、メッセージは送れません");
   if ((await db.message.count({ where: { senderId: userId, createdAt: { gt: new Date(now.getTime() - 60_000) } } })) >= RATE.perMinute) return fail("短い時間に続けて送られています。1分ほど待ってから、もう一度お試しください");
   try {
-    const m = await db.message.create({ data: { orderId, senderId: userId, body: t, requestId }, select: { id: true } });
+    const m = await db.$transaction(async tx => {
+      const message = await tx.message.create({ data: { orderId, senderId: userId, body: t, requestId }, select: { id: true } });
+      await messageNotification(tx, { id: message.id, userId: o.buyerId === userId ? o.producerId : o.buyerId, senderId: userId, href: `/orders/${orderId}#messages`, listingName: o.listing.name }, now);
+      return message;
+    });
     return { ok: true, id: m.id };
   } catch (e) {
     if ((e as { code?: string }).code === "P2002") return { ok: true, id: requestId };

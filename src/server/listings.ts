@@ -8,10 +8,20 @@ const STOCK_ORDERS = { where: { status: { in: ["pending", "changeRequested", "co
 
 export async function createListing(producerId: string, v: ListingValue, photo: { mime: string; data: Buffer } | null) {
   const { courierFees, ...rest } = v;
-  return getDb().listing.create({
-    data: { ...rest, courierFees: courierFees ?? undefined, producerId, status: "open", ...(photo ? { photo: { create: { mime: photo.mime, data: new Uint8Array(photo.data) } } } : {}) },
-    select: { id: true },
-  });
+  return getDb().$transaction(async tx => {
+    const listing = await tx.listing.create({
+      data: { ...rest, courierFees: courierFees ?? undefined, producerId, status: "open", ...(photo ? { photo: { create: { mime: photo.mime, data: new Uint8Array(photo.data) } } } : {}) },
+      select: { id: true },
+    });
+    if (v.wantedPostId) {
+      const wanted = await tx.wantedPost.findUnique({ where: { id: v.wantedPostId }, select: { buyerId: true } });
+      if (wanted && wanted.buyerId !== producerId) {
+        const producer = await tx.user.findUniqueOrThrow({ where: { id: producerId }, select: { name: true } });
+        await tx.notification.create({ data: { userId: wanted.buyerId, eventKey: "wanted:" + listing.id, kind: "wanted", title: "探している野菜への出品が届きました", body: v.name + "の出品をご確認ください。まだ購入は確定していません。", sender: producer.name, href: "/listings/" + listing.id } });
+      }
+    }
+    return listing;
+    });
 }
 
 /** 自分の出品の一覧（量の内訳つき） */

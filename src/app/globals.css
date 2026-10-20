@@ -101,13 +101,15 @@ input, select, textarea { font-size: 1.125rem; }
   .app-with-companion:has(.komame-guide.is-collapsed) { padding-bottom: calc(80px + env(safe-area-inset-bottom)); }
 }
 
-/* 相談は背景を暗くせず、アプリの上の小窓で開く。 */
+/* 相談中は画面全体を使い、会話と入力を独立して表示する。 */
 .komame-consult { min-height: 48px; padding: 8px 10px; margin-top: 5px; border-radius: 12px; background: #00873c; color: white; font-size: 16px; font-weight: 700; cursor: pointer; }
-.komame-chat { position: fixed; right: 20px; bottom: 105px; z-index: 50; display: flex; flex-direction: column; width: min(460px, calc(100% - 24px)); max-height: min(720px, calc(100dvh - 128px)); border: 2px solid #b8dfc6; border-radius: 22px; background: white; box-shadow: 0 8px 32px #123d1933; overflow: hidden; font-size: 16px; line-height: 1.6; }
+.komame-chat { position: fixed; inset: 0; z-index: 50; display: flex; flex-direction: column; width: 100%; height: 100dvh; max-width: none; max-height: none; margin: 0; padding: 0; border: 0; border-radius: 0; background: white; color: var(--color-ink); overflow: hidden; font-size: 18px; line-height: 1.6; }
+.komame-chat::backdrop { background: white; }
+.komame-chat > header, .komame-chat-log, .komame-chat-compose { width: 100%; max-width: 960px; margin-inline: auto; }
 .komame-chat-heading { display: flex; flex-shrink: 0; gap: 8px; align-items: center; justify-content: space-between; padding: 12px; background: #e8f8ee; }
 .komame-chat-heading h2 { font-size: 20px; font-weight: 700; color: #006b30; }
 .komame-chat-heading p { font-size: 16px; }
-.komame-chat-log { min-height: 0; overflow-y: auto; overscroll-behavior: contain; padding: 12px; }
+.komame-chat-log { flex: 1; min-height: 0; overflow-y: auto; overscroll-behavior: contain; padding: 12px; }
 .komame-chat-note { font-size: 16px; color: #4b5563; margin-top: 5px; }
 .komame-chat-intro { padding: 10px; background: #e8f8ee; border-radius: 12px; }
 .komame-chat-turn { margin-top: 16px; padding: 12px; border: 1px solid #b8dfc6; border-radius: 14px; overflow-wrap: anywhere; }
@@ -115,15 +117,21 @@ input, select, textarea { font-size: 1.125rem; }
 .komame-chat-message { white-space: pre-wrap; margin-top: 6px; }
 .komame-chat-turn h3, .komame-product h4 { font-size: 18px; font-weight: 700; margin-top: 8px; }
 .komame-conditions { padding: 10px; background: #f5f8f5; margin: 10px 0; border-radius: 10px; }
-.komame-product { padding: 10px 0; border-top: 1px solid #d1d5db; margin-top: 10px; }
-.komame-product-photo { float: right; object-fit: cover; border-radius: 12px; margin-left: 8px; }
+.komame-product { display: grid; grid-template-columns: 120px minmax(0, 1fr); gap: 16px; padding: 10px 0; border-top: 1px solid #d1d5db; margin-top: 10px; }
+.komame-product-photo, .komame-product-placeholder { width: 120px; height: 120px; object-fit: cover; border-radius: 12px; }
+.komame-product-placeholder { display: flex; align-items: center; justify-content: center; background: #e8f8ee; color: #4b5563; font-size: 16px; }
+.komame-product > div { min-width: 0; }
 .komame-chat-link { display: flex; align-items: center; justify-content: center; min-height: 48px; padding: 8px; color: #006b30; border: 2px solid #b8dfc6; border-radius: 12px; font-weight: 700; margin-top: 8px; }
-.komame-chat-compose { flex-shrink: 0; padding: 10px 12px; border-top: 1px solid #b8dfc6; max-height: 48%; overflow-y: auto; }
+.komame-chat-compose { flex-shrink: 0; padding: 10px 16px calc(12px + env(safe-area-inset-bottom)); border-top: 1px solid #b8dfc6; max-height: 48%; overflow-y: auto; }
 .komame-chat-compose label { font-weight: 700; }
-.komame-chat-compose textarea { width: 100%; min-height: 64px; border: 2px solid #b8dfc6; border-radius: 10px; padding: 8px; font-size: 18px; resize: vertical; }
+.komame-chat-compose textarea { width: 100%; min-height: 64px; border: 2px solid #b8dfc6; border-radius: 10px; padding: 8px; font-size: 18px; resize: none; }
 .komame-chat-buttons { display: flex; gap: 8px; }
 .komame-chat-buttons button, .komame-chat-examples button { min-height: 48px; border: 1px solid #b8dfc6; border-radius: 10px; padding: 8px 10px; cursor: pointer; font-size: 16px; }
 .komame-chat-buttons button[type="submit"] { flex: 1; background: #00873c; color: white; font-weight: 700; }
 .komame-chat-buttons button:disabled { opacity: .5; cursor: default; }
 .komame-chat-examples { display: grid; gap: 8px; margin-top: 12px; }
-@media (max-width: 767px) { .komame-chat { right: 12px; bottom: calc(168px + env(safe-area-inset-bottom)); max-height: calc(100dvh - 184px - env(safe-area-inset-bottom)); } }
+@media (max-width: 767px) {
+  .komame-chat-heading { padding-top: max(12px, env(safe-area-inset-top)); }
+  .komame-product { grid-template-columns: 96px minmax(0, 1fr); gap: 10px; }
+  .komame-product-photo, .komame-product-placeholder { width: 96px; height: 96px; }
+}

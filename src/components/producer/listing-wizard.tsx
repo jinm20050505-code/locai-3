@@ -143,7 +143,7 @@ export function ListingWizard({ initial, fresh, editId }: { initial: WizardValue
           <Field id="description" title="ひとこと（あれば）" hint="育て方や、おすすめの使い方など（500文字まで）" error={e.description}>
             <textarea id="description" rows={3} className={input} value={v.description ?? ""} onChange={set("description")} maxLength={500} />
           </Field>
-          <Field id="photo" title="写真（あれば）" hint="野菜がよく見える写真を1枚" error={e.photo || photoError}>
+          <Field id="photo" title="写真（あれば）" hint="野菜がよく見える写真を1枚。検索一覧・商品詳細・こまめの提案にも表示します。出品の編集から変更できます。" error={e.photo || photoError}>
             <input id="photo" type="file" accept="image/jpeg,image/png" className={input} onChange={async (ev) => {
               const f = ev.target.files?.[0];
               setPhotoError("");

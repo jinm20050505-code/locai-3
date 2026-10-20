@@ -151,7 +151,7 @@ export function MobileExperience({ role }: { role: Role | null }) {
           <button type="button" className="komame-consult" onClick={() => setChatOpen(true)}>料理・野菜を相談する</button>
         </div>}
       </aside>
-      <KomameChat role={role} open={chatOpen} onClose={() => { setChatOpen(false); avatar.current?.focus(); }} />
+      <KomameChat role={role} open={chatOpen} onClose={() => { setChatOpen(false); requestAnimationFrame(() => avatar.current?.focus()); }} />
       <dialog ref={dialog} className="komame-tutorial" aria-labelledby="komame-title" onCancel={finish}>
         <div className="guide-modal-content">
           <div className="flex items-center justify-between gap-3"><p className="font-bold text-brand-dark">こまめの使い方ガイド</p><button type="button" className="guide-close" onClick={finish} aria-label="案内を閉じる">閉じる</button></div>

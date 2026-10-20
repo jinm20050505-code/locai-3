@@ -8,7 +8,7 @@ export async function GET(_req: Request, ctx: RouteContext<"/api/photos/[id]">) 
   return new Response(new Uint8Array(p.data), {
     headers: {
       "content-type": p.mime,
-      "cache-control": "public, max-age=3600",
+      "cache-control": "public, max-age=0, must-revalidate",
       "x-content-type-options": "nosniff",
       // SVG（デモの写真）の中で、スクリプトなどを動かさない
       "content-security-policy": "default-src 'none'; style-src 'unsafe-inline'; sandbox",

@@ -66,7 +66,7 @@ async function List({ searchParams }: { searchParams: PageProps<"/producer">["se
               )}
               {l.waiting > 0 && <LinkButton href="/producer/orders">回答待ちの購入希望 {l.waiting}件 を見る</LinkButton>}
               <StatusButtons id={l.id} status={l.status} />
-              {l.status !== "closed" && <LinkButton href={`/producer/listings/${l.id}/edit`} kind="secondary">出品を編集する</LinkButton>}
+              {l.status !== "closed" && <div><LinkButton href={`/producer/listings/${l.id}/edit`} kind="secondary">出品を編集する</LinkButton><p className="text-base text-sub">野菜の写真も、編集から登録・変更できます。</p></div>}
               <LinkButton href={`/producer/listings/${l.id}/messages`} kind="plain">お店からの相談（{threads.get(l.id) ?? 0}件）</LinkButton>
               <p className="text-base">
                 <Link href={`/listings/${l.id}`} className="font-bold text-brand-dark underline">お店から見える画面</Link>

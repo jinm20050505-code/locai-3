@@ -14,10 +14,19 @@ export function KomameChat({ role, open, onClose }: { role: Role | null; open: b
   const [text, setText] = useState("");
   const [error, setError] = useState("");
   const [pending, start] = useTransition();
+  const panel = useRef<HTMLDialogElement>(null);
   const input = useRef<HTMLTextAreaElement>(null);
   const end = useRef<HTMLDivElement>(null);
   const [resultReady, setResultReady] = useState(false);
-  useEffect(() => { if (open) input.current?.focus(); }, [open]);
+  useEffect(() => {
+    if (!open) return;
+    panel.current?.showModal();
+    const viewport = window.visualViewport;
+    const fit = () => { if (panel.current) { panel.current.style.height = (viewport?.height ?? window.innerHeight) + "px"; panel.current.style.top = (viewport?.offsetTop ?? 0) + "px"; } };
+    fit();
+    viewport?.addEventListener("resize", fit); viewport?.addEventListener("scroll", fit);
+    return () => { viewport?.removeEventListener("resize", fit); viewport?.removeEventListener("scroll", fit); };
+  }, [open]);
   useEffect(() => { if (open) end.current?.scrollIntoView({ block: "nearest" }); }, [open, turns, pending]);
   const submit = (value: string) => {
     const message = value.trim();
@@ -37,8 +46,8 @@ export function KomameChat({ role, open, onClose }: { role: Role | null; open: b
   };
   if (!open) return null;
   const examples = role === "producer" ? ["なすのおすすめ料理を紹介する文章を考えて", "購入希望が届いたらどうしたらいい？"] : ["金曜に10人分の野菜カレーを作りたい", "予算を抑えてスープに使う野菜を探したい"];
-  return <section className="komame-chat" role="dialog" aria-modal="false" aria-labelledby="komame-chat-title" onKeyDown={e => { if (e.key === "Escape") { e.stopPropagation(); onClose(); } }}>
-    <header className="komame-chat-heading"><div><h2 id="komame-chat-title">こまめに相談</h2><p>料理・野菜・使い方を気軽に聞いてね</p></div><button type="button" className="komame-dismiss" onClick={onClose} aria-label="相談を閉じる">閉じる ×</button></header>
+  return <dialog ref={panel} className="komame-chat" aria-labelledby="komame-chat-title" onCancel={e => { e.preventDefault(); onClose(); }}>
+    <header className="komame-chat-heading"><div><h2 id="komame-chat-title">こまめに相談</h2><p>料理・野菜・使い方を気軽に聞いてね</p></div><button type="button" className="komame-dismiss" onClick={onClose} aria-label="相談を閉じる">← 戻る</button></header>
     {!role ? <div className="komame-chat-log"><p>料理や野菜のAI相談は、ログインすると使えるよ。</p><Link className="komame-chat-link" href="/login" onClick={onClose}>ログインする</Link><p>使い方のガイドは、ログインせずに見られるよ。</p></div> : <>
       <div className="komame-chat-log" role="log" aria-label="こまめとの会話" aria-busy={pending}>
         <p className="komame-chat-intro">「いつ、何人分の、どんな料理？」から話してみてね。料理の目安を一緒に考えて、出品されている野菜を探せるよ。</p>
@@ -50,7 +59,7 @@ export function KomameChat({ role, open, onClose }: { role: Role | null; open: b
             {t.conditions.vegetables.length > 0 && <><h3>出品から探した参考候補</h3><p className="komame-chat-note">料理全体の買い物かご・合計ではありません。条件未定の項目は、まだ確認が必要です。在庫・金額は相談時点の表示で、購入画面で再確認します。</p>{!t.cards?.length && <p>確認した出品には、条件に合う候補がなかったよ。日付・量・受け取り方を変えるか、別の野菜で相談してみよう。</p>}</>}
           </>}
           {t.cards?.map(c => <div className="komame-product" key={c.id}>
-            {c.hasPhoto && <Image src={`/api/photos/${c.id}`} alt={c.name} width={72} height={72} unoptimized className="komame-product-photo" />}
+            {c.hasPhoto ? <Image src={`/api/photos/${c.id}`} alt={`${c.name}の写真（農家さんが登録）`} width={120} height={120} unoptimized className="komame-product-photo" /> : <div className="komame-product-placeholder">写真未登録</div>}
             <div><h4>{c.name}</h4><p>{c.place}{c.isDemo ? "・架空のデモ出品" : ""}</p><p>1kg {formatYen(c.pricePerKg)} ／ 残り{formatKg(c.availableGrams)}</p><p>{formatKg(c.grams)}の商品代 {formatYen(c.subtotalYen)}</p><p><b>{c.totalYen === null ? "送料込みの合計は未確定" : `送料込み ${formatYen(c.totalYen)}`}</b>{c.method ? `（${METHOD_LABEL[c.method]}）` : ""}</p>{c.notes.map(n => <p className="komame-chat-note" key={n}>{n}</p>)}
             <Link className="komame-chat-link" href={`/listings/${c.id}?${new URLSearchParams({ kg: String(c.grams/1000), ...(c.useDate ? { date: c.useDate } : {}) })}`} onClick={onClose}>商品を見て条件を確認</Link></div>
           </div>)}
@@ -68,5 +77,5 @@ export function KomameChat({ role, open, onClose }: { role: Role | null; open: b
         <p className="komame-chat-note">購入希望や承認は自動では行いません。使い方・野菜の検索は、相談できないときも使えます。</p>
       </div>
     </>}
-  </section>;
+  </dialog>;
 }

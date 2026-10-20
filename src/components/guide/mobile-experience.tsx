@@ -66,13 +66,25 @@ export function MobileExperience({ role }: { role: Role | null }) {
   const path = usePathname();
   const ready = useSyncExternalStore(subscribeReady, clientReady, serverReady);
   const dialog = useRef<HTMLDialogElement>(null);
+  const avatar = useRef<HTMLButtonElement>(null);
   useEffect(() => { document.querySelector(".app-page-region")?.scrollTo(0, 0); }, [path]);
   const [step, setStep] = useState(0);
   const [seen, setSeen] = useState(true);
+  const [collapsed, setCollapsed] = useState(false);
   useEffect(() => {
     // eslint-disable-next-line react-hooks/set-state-in-effect -- 初回の案内表示だけ、ブラウザ内の保存を読む
     try { setSeen(localStorage.getItem("locai3-guide-seen-v1") === "yes"); } catch { setSeen(false); }
   }, []);
+  useEffect(() => {
+    // eslint-disable-next-line react-hooks/set-state-in-effect -- 説明バーを閉じた設定をブラウザから復元する
+    try { setCollapsed(localStorage.getItem("locai3-guide-collapsed-v1") === "yes"); } catch { /* 保存不可なら説明を表示 */ }
+  }, []);
+  const toggleExplanation = (hide: boolean) => {
+    setCollapsed(hide);
+    try { localStorage.setItem("locai3-guide-collapsed-v1", hide ? "yes" : "no"); } catch { /* 保存不可でも開閉はできる */ }
+    if (hide) avatar.current?.focus();
+  };
+  const openTutorial = () => { setStep(0); dialog.current?.showModal(); };
   const finish = () => {
     try { localStorage.setItem("locai3-guide-seen-v1", "yes"); } catch { /* 保存不可でも案内は使える */ }
     setSeen(true);
@@ -101,11 +113,12 @@ export function MobileExperience({ role }: { role: Role | null }) {
       <nav className="mobile-navigation" aria-label="下のメニュー">
         {nav.map(item => <Link key={item.href} href={item.href} aria-current={active(item.href) ? "page" : undefined} className={active(item.href) ? "mobile-menu-item is-current" : "mobile-menu-item"}><MenuIcon name={item.icon} /><span>{item.label}</span></Link>)}
       </nav>
-      <aside className="komame-guide" aria-label="こまめの使い方案内">
-        <button type="button" className="komame-launcher" aria-label="こまめの使い方ガイドを開く" aria-describedby="komame-hint" onClick={() => { setStep(0); dialog.current?.showModal(); }}>
-          <span className="komame-avatar"><Komame /></span>
-          <span className="komame-bubble"><b>{seen ? "こまめのひとこと" : "はじめての方へ"}</b><span id="komame-hint">{hint(path, role)}</span><span className="komame-call">タップで使い方を見る ›</span></span>
-        </button>
+      <aside className={collapsed ? "komame-guide is-collapsed" : "komame-guide"} aria-label="こまめの使い方案内">
+        <button ref={avatar} type="button" className="komame-avatar" aria-label={collapsed ? "こまめの説明を開く" : "こまめに使い方を聞く"} onClick={() => collapsed ? toggleExplanation(false) : openTutorial()}><Komame /></button>
+        {!collapsed && <div className="komame-bubble">
+          <div className="komame-bubble-heading"><b>{seen ? "こまめのひとこと" : "はじめての方へ"}</b><button type="button" className="komame-dismiss" aria-label="こまめの説明バーを閉じる" onClick={() => toggleExplanation(true)}>閉じる <span aria-hidden="true">×</span></button></div>
+          <button type="button" className="komame-launcher" aria-label="こまめの使い方ガイドを開く" aria-describedby="komame-hint" onClick={openTutorial}><span id="komame-hint">{hint(path, role)}</span><span className="komame-call">タップで使い方を見る ›</span></button>
+        </div>}
       </aside>
       <dialog ref={dialog} className="komame-tutorial" aria-labelledby="komame-title" onCancel={finish}>
         <div className="guide-modal-content">

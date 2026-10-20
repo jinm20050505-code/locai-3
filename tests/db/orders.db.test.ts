@@ -1,5 +1,6 @@
 // 取引の決まりの確認（手元の DB）。どの順番で起きても、決まった量・金額・残りの量が合うこと
 import { randomUUID } from "node:crypto";
+import { execFileSync } from "node:child_process";
 import { afterAll, beforeAll, describe, expect, it } from "vitest";
 import { getDb } from "@/lib/db";
 import { stockOf } from "@/lib/order-rules";
@@ -8,7 +9,7 @@ import { updateListing } from "@/server/listings";
 import { buyerThread, postListingMessage, producerThreads } from "@/server/threads";
 import { validateListing } from "@/lib/listing-rules";
 import { dayText, toJstInput } from "@/lib/dates";
-import { createWanted, listOpenWanted, validateWanted } from "@/server/wanted";
+import { createWanted, listOpenWanted, report, validateWanted } from "@/server/wanted";
 import { acceptChange, applyOrder, approveAll, approveOrder, cancelOrder, declineOrder, getOrderForParty, proposeChange, sendMessage } from "@/server/orders";
 
 const db = getDb();
@@ -50,6 +51,7 @@ afterAll(async () => {
   await db.listingMessage.deleteMany({ where: { senderId: { in: users } } });
   await db.order.deleteMany({ where: { buyerId: { in: users } } });
   await db.listing.deleteMany({ where: { producerId: { in: users } } });
+  await db.report.deleteMany({ where: { reporterId: { in: users } } });
   await db.user.deleteMany({ where: { id: { in: users } } });
 });
 
@@ -317,5 +319,42 @@ describe("他人の情報は見えない", () => {
     expect((await approveOrder(buyerB, r.id)).ok).toBe(false);
     expect((await sendMessage(outsider, r.id, "こんにちは", randomUUID())).ok).toBe(false);
     expect((await sendMessage(me, r.id, "<b>よろしく</b>", randomUUID())).ok).toBe(true);
+  });
+});
+
+
+describe("通報の保護", () => {
+  it("存在しない対象と自分の出品は受け付けず、通報だけで出品は止めない", async () => {
+    const l = await mkListing(producer);
+    expect((await report(buyerA, "listing", randomUUID(), "確認")).ok).toBe(false);
+    expect((await report(producer, "listing", l.id, "確認")).ok).toBe(false);
+    expect((await report(buyerA, "listing", l.id, "確認")).ok).toBe(true);
+    expect((await db.listing.findUniqueOrThrow({ where: { id: l.id } })).status).toBe("open");
+  });
+  it("同時に11対象を通報しても、連続送信は1件だけ受け付ける", async () => {
+    const buyer = await mkUser("buyer");
+    const listings = await Promise.all(Array.from({ length: 11 }, () => mkListing(producer)));
+    const result = await Promise.all(listings.map(l => report(buyer, "listing", l.id, "確認")));
+    expect(result.filter(r => r.ok)).toHaveLength(1);
+  });
+});
+
+
+describe("運営の通報対応", () => {
+  it("確認だけでは変えず、実行すると出品の公開状態だけ変えて記録する", async () => {
+    const buyer = await mkUser("buyer");
+    const l = await mkListing(producer);
+    await report(buyer, "listing", l.id, "確認用");
+    const r = await db.report.findUniqueOrThrow({ where: { reporterId_targetType_targetId: { reporterId: buyer, targetType: "listing", targetId: l.id } } });
+    const args = ["scripts/reports.mjs", "--id", r.id, "--action", "pause-listing", "--reason", "確認用", "--operator", "テスト担当"];
+    execFileSync(process.execPath, args);
+    expect((await db.listing.findUniqueOrThrow({ where: { id: l.id } })).status).toBe("open");
+    expect(await db.reportAction.count({ where: { reportId: r.id } })).toBe(0);
+    execFileSync(process.execPath, [...args, "--yes"]);
+    const after = await db.listing.findUniqueOrThrow({ where: { id: l.id } });
+    expect(after.status).toBe("paused");
+    expect(after.totalGrams).toBe(l.totalGrams);
+    expect(after.pricePerKg).toBe(l.pricePerKg);
+    expect(await db.reportAction.count({ where: { reportId: r.id } })).toBe(1);
   });
 });

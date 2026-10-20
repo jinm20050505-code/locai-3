@@ -20,6 +20,7 @@ npm run build && npm start        # http://localhost:3004
 
 - 接続先などの設定は `.env.local`（Git に入れない）。見本は `.env.example`。
 - AI（Gemini）は任意です。`GEMINI_API_KEY` と `GEMINI_MODEL` がなくても、検索・申し込みはそのまま使えます（代わりの野菜はアプリの決まりで選びます）。
+- Gemini の設定：`npm run ai:set`（鍵は打っても画面に出ない）→ `npm run ai:check`（使えるモデルの一覧と、架空の希望で1回応答を確かめる）→ アプリを起動し直す。
 
 ## 確認のしかた
 
@@ -58,11 +59,18 @@ node tests/e2e/shots.mjs        # 見た目（文字の大きさ・ボタンの�
 - 戻す：`npm run db:restore -- backups/locai3-....dump --yes`（戻す前の状態も自動でバックアップ）
 - 2026年10月19日に、バックアップを別の一時的な DB に戻し、利用者・出品・写真・注文の数と写真の中身が一致することを確かめた。
 
-### 今の作業場所について（大事）
+### 移行後の作業場所
 
-今は既存の LocAI の開発コンテナの中の `/workspaces/LocAI-3` で作業している。ここは Mac のフォルダではないため、**このコンテナを作り直すと、作業フォルダ・DB・バックアップが消える**（ソースは GitHub に残る）。続けて使う場合は、次の手順で LocAI.3 専用の環境に移す。
+Mac の `/Users/jin/LocAI3-移行/LocAI-3` を、LocAI.3 専用コンテナで開いています。ソースと設定は Mac、DB は専用の Docker ボリュームに残ります。古い LocAI・LocAI.2 とは別です。
 
-1. 移す前に `npm run db:backup` を実行し、VS Code の左のファイル一覧で `backups/` の中のファイルを右クリック →「ダウンロード」で Mac に保存する（必要なら `demo-accounts.local.txt` も）。
-2. Mac で、LocAI とは別のフォルダに `git clone https://github.com/jinm20050505-code/locai-3.git` する。
-3. そのフォルダを VS Code で開き、「Dev Containers: Reopen in Container」。初回は `npm install` と `npm run setup`（DB と `.env.local` の用意）が自動で動く。
-4. 1 のバックアップを `backups/` に置き、`npm run db:restore -- backups/<ファイル名> --yes`。データを持ち込まない場合は `npm run db:seed`（架空のデモデータ）。
+## 通報の確認と対応
+
+担当：松田。`npm run reports` で直近100件の通報と最後の対応を確認します。DBにアクセスできる運営だけが使えるコマンドです。
+
+```bash
+npm run reports -- --id 通報番号 --action pause-listing --reason "対応理由" --operator 松田
+```
+
+最初は確認のみです。内容を確認して `--yes` を付けると、出品を一時停止し、担当者・理由・日時・変更前後を記録します。「探しています」の終了は `close-wanted`、表示を変えず記録だけ残す場合は `keep`。注文・数量・金額は変えません。通報が届いただけでは自動停止しません。同じ対象の再通報は更新され、連続送信は6秒間隔・新しい対象は1分に10件までです（独自・仮）。運営は毎日一覧を確認してください。通知や管理画面はありません。
+
+公開の設定は [docs/deploy.md](docs/deploy.md)、AIの確認結果は [docs/ai-verification.md](docs/ai-verification.md) にあります。

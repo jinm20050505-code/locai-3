@@ -63,6 +63,20 @@ export function getPublicWanted(id: string) {
 export async function report(reporterId: string, targetType: "listing" | "wanted", targetId: string, reason: string) {
   const r = reason.trim().slice(0, 500);
   if (!r) return { ok: false as const, problem: "通報の理由を書いてください" };
-  await getDb().report.upsert({ where: { reporterId_targetType_targetId: { reporterId, targetType, targetId } }, create: { reporterId, targetType, targetId, reason: r }, update: { reason: r } });
-  return { ok: true as const };
+  return getDb().$transaction(async (tx) => {
+    // 同じ人の同時送信も、利用者の行をロックして回数を数える。
+    await tx.$queryRaw`SELECT id FROM "user" WHERE id = ${reporterId} FOR UPDATE`;
+    const target = targetType === "listing"
+      ? await tx.listing.findUnique({ where: { id: targetId }, select: { producerId: true, status: true } })
+      : await tx.wantedPost.findUnique({ where: { id: targetId }, select: { buyerId: true, status: true } });
+    if (!target || target.status !== "open") return { ok: false as const, problem: "公開中の対象が見つかりません" };
+    const owner = "producerId" in target ? target.producerId : target.buyerId;
+    if (owner === reporterId) return { ok: false as const, problem: "自分の投稿は通報できません" };
+    const latest = await tx.report.findFirst({ where: { reporterId }, orderBy: { createdAt: "desc" }, select: { createdAt: true } });
+    if (latest && Date.now() - latest.createdAt.getTime() < 6_000) return { ok: false as const, problem: "通報が続いています。少し待ってください" };
+    const recent = await tx.report.count({ where: { reporterId, createdAt: { gt: new Date(Date.now() - 60_000) } } });
+    if (recent >= 10) return { ok: false as const, problem: "通報が続いています。1分ほど待ってください" };
+    await tx.report.upsert({ where: { reporterId_targetType_targetId: { reporterId, targetType, targetId } }, create: { reporterId, targetType, targetId, reason: r }, update: { reason: r, createdAt: new Date() } });
+    return { ok: true as const };
+  });
 }

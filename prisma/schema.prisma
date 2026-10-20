@@ -301,6 +301,8 @@ model Report {
   reason     String
   createdAt  DateTime @default(now())
 
+  actions ReportAction[]
+
   @@unique([reporterId, targetType, targetId])
   @@map("report")
 }
@@ -320,4 +322,19 @@ model ListingMessage {
   @@unique([senderId, requestId])
   @@index([listingId, buyerId, createdAt])
   @@map("listing_message")
+}
+
+// 運営が通報を確認した記録。通常の利用者向けAPIには出さない
+model ReportAction {
+ id String @id @default(uuid())
+ reportId String
+ report Report @relation(fields: [reportId], references: [id], onDelete: Cascade)
+ operator String
+ action String
+ reason String
+ previousStatus String?
+ nextStatus String?
+ createdAt DateTime @default(now())
+ @@index([reportId, createdAt])
+ @@map("report_action")
 }

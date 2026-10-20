@@ -27,6 +27,8 @@ async function page(opts) {
   return p;
 }
 const main = (p) => p.locator("main:visible").first();
+// 相談の一覧に出た文。送信中は入力欄にも同じ文が残り getByText が一致してしまうため、一覧（ol）の中だけを見る
+const posted = (p, text) => main(p).locator("ol > li").filter({ hasText: text });
 async function signup(p, role, name, pref, city) {
   await p.goto(`${B}/signup`);
   await p.getByLabel(role === "buyer" ? /お店（飲食店）/ : /農家（生産者）/).check();
@@ -209,15 +211,15 @@ try {
   await bp.getByText(/この出品について農家さんに相談する/).click();
   await bp.getByLabel("相談を書く（500文字まで）").fill("葉っぱも付いていますか（架空）");
   await bp.getByRole("button", { name: "送る" }).click();
-  await main(bp).getByText("葉っぱも付いていますか（架空）").waitFor();
+  await posted(bp, "葉っぱも付いていますか（架空）").waitFor();
   await pp.goto(`${B}/producer/listings/${L.id}/messages`);
-  await pp.getByText("葉っぱも付いていますか（架空）").waitFor();
+  await posted(pp, "葉っぱも付いていますか（架空）").waitFor();
   await pp.getByLabel("返信を書く（500文字まで）").fill("付いています（架空）");
   await pp.getByRole("button", { name: "送る" }).click();
-  await main(pp).getByText("付いています（架空）").waitFor();
+  await posted(pp, "付いています（架空）").waitFor();
   await bp.goto(`${B}/listings/${L.id}`);
-  await main(bp).getByText("付いています（架空）").waitFor().catch(() => {});
-  ok("出品への相談：お店の質問に農家さんが返信でき、お店の画面に出る", (await main(bp).innerText()).includes("付いています（架空）"));
+  await posted(bp, "付いています（架空）").waitFor().catch(() => {});
+  ok("出品への相談：お店の質問に農家さんが返信でき、お店の画面に出る", (await posted(bp, "付いています（架空）").count()) === 1);
 
   // ---- 見積相談：配達料が見積もりの購入希望 → 農家さんが送料を提示 → お店が同意して販売確定
   await bp.goto(`${B}/listings/${L.id}`);

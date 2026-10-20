@@ -20,6 +20,13 @@ try {
     assert.equal(await page.getByRole('dialog').isVisible(), false);
     assert.ok(await page.locator('.app-page-region').evaluate(e => e.clientHeight) > expanded);
     assert.equal(await reopen.evaluate(e => e === document.activeElement), true);
+    assert.ok(await page.evaluate(() => {
+      const guide = document.querySelector('.komame-guide');
+      const area = document.querySelector('.app-page-region').getBoundingClientRect();
+      const menu = document.querySelector('.mobile-navigation');
+      const bottom = innerWidth < 768 ? menu.getBoundingClientRect().top : innerHeight;
+      return Math.abs(area.bottom - bottom) <= 2 && area.bottom > guide.getBoundingClientRect().top && getComputedStyle(guide).backgroundColor === 'rgba(0, 0, 0, 0)';
+    }));
     await page.reload();
     await reopen.waitFor();
     assert.equal(await page.locator('.komame-bubble').count(), 0);

@@ -81,7 +81,7 @@ export async function summarizeOrders(producerId: string, listingId: string, now
     select: { name: true, totalGrams: true, pricePerKg: true, availableFrom: true, availableUntil: true, replyUntil: true, deliveryPrefs: true, courierPrefs: true, deliveryMaxOrders: true, orders: { where: { status: "pending", replyDeadline: { gt: now } }, orderBy: { createdAt: "asc" }, select: { quantityGrams: true, method: true, useDate: true, subtotalYen: true, feeYen: true, buyer: { select: { prefecture: true } } } } },
   });
   if (!l || !l.orders.length) return { ok: false as const, message: "要約する回答待ちの注文がありません" };
-  return ask(producerId, "summary", "生産者に届いた購入希望を、生産者が判断しやすいように要約し、確認が必要な点（納品日が近い・配達の範囲の境目・件数が多いなど）を挙げてください。承認するかどうかは勧めないでください。", {
+  return ask(producerId, "summary", "生産者に届いた購入希望を、渡されたデータで確認できる事実だけで短く要約してください。確認が必要な点は、使用日・回答期限・受け取り方法・登録された対応府県・件数から直接確認できるものだけにしてください。地図・距離・経路・府県内の位置は渡していません。「配達範囲の境目」「遠い」「近隣」「配送できない」などの地理的判断を推測しないでください。届け先が宅配できる府県に含まれる場合は、その府県を範囲外や境界とは扱わないでください。宅配発送と農家の配達は区別してください。確認できないことは断定せず、確認点がなければ空の配列にしてください。承認するかどうかは勧めないでください。", {
     今日: todayText(now), 出品: { 名前: l.name, 出品した量kg: l.totalGrams / 1000, 納品期間: `${dayText(l.availableFrom)}〜${dayText(l.availableUntil)}`, 回答期限: l.replyUntil.toISOString(), 配達できる府県: l.deliveryPrefs.map(prefName), 宅配できる府県: l.courierPrefs.map(prefName), 配達の受付件数: l.deliveryMaxOrders },
     注文: l.orders.map((o, i) => ({ 店: `店${i + 1}`, 数量kg: o.quantityGrams / 1000, 受け取り: METHOD_LABEL[o.method as Method], 届け先の府県: prefName(o.buyer.prefecture), 使用日: formatDay(o.useDate), 商品代: o.subtotalYen, 送料: o.feeYen })),
   }, { type: "object", properties: { 要約: { type: "string" }, 確認が必要な点: { type: "array", items: { type: "string" } } }, required: ["要約", "確認が必要な点"] }, Summary, now);

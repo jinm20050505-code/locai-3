@@ -3,5 +3,22 @@
   "regions": [
     "sin1"
   ],
-  "buildCommand": "npm run db:deploy && npm run build"
+  "buildCommand": "npm run db:deploy && npm run build",
+  "crons": [
+    {
+      "path": "/api/cron/notifications",
+      "schedule": "0 15 * * *"
+    }
+  ],
+  "headers": [
+    {
+      "source": "/sw.js",
+      "headers": [
+        {
+          "key": "Cache-Control",
+          "value": "no-cache, no-store, must-revalidate"
+        }
+      ]
+    }
+  ]
 }

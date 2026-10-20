@@ -13,12 +13,15 @@ try {
     await close.waitFor();
     assert.ok((await close.boundingBox()).height >= 48);
     const expanded = await page.locator('.app-page-region').evaluate(e => e.clientHeight);
+    const avatarBefore = await page.locator('.komame-avatar').boundingBox();
     await close.click();
     const reopen = page.getByRole('button', { name: 'こまめの説明を開く', exact: true });
     await reopen.waitFor();
     assert.equal(await page.locator('.komame-bubble').count(), 0);
     assert.equal(await page.getByRole('dialog').isVisible(), false);
-    assert.ok(await page.locator('.app-page-region').evaluate(e => e.clientHeight) > expanded);
+    assert.equal(await page.locator('.app-page-region').evaluate(e => e.clientHeight), expanded);
+    const avatarAfter = await page.locator('.komame-avatar').boundingBox();
+    assert.ok(Math.abs(avatarBefore.x - avatarAfter.x) < 1 && Math.abs(avatarBefore.y - avatarAfter.y) < 1);
     assert.equal(await reopen.evaluate(e => e === document.activeElement), true);
     assert.ok(await page.evaluate(() => {
       const guide = document.querySelector('.komame-guide');
@@ -46,7 +49,7 @@ try {
     await page.reload();
     await close.waitFor();
     assert.ok(await page.evaluate(() => document.documentElement.scrollWidth <= innerWidth));
-    assert.ok(await page.evaluate(() => document.querySelector('.app-page-region').getBoundingClientRect().bottom <= document.querySelector('.komame-guide').getBoundingClientRect().top));
+    assert.ok(await page.evaluate(() => document.querySelector('.app-page-region').getBoundingClientRect().bottom > document.querySelector('.komame-guide').getBoundingClientRect().top));
     assert.deepEqual(errors, []);
     console.log('OK ' + width + 'px：閉じる・再表示・再読み込み・案内・画面の重なり');
     await context.close();

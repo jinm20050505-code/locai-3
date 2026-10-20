@@ -41,13 +41,13 @@ body {
 input, select, textarea { font-size: 1.125rem; }
 
 /* スマホの主な操作は、親指が届く下へ。セーフエリア分も確保する。 */
-.app-with-companion { padding-bottom: 210px; }
+.app-with-companion { padding-bottom: 0; }
 .mobile-navigation { display: none; }
 .komame-guide { position: fixed; z-index: 30; right: 20px; bottom: 20px; width: min(360px, calc(100% - 32px)); }
 .komame-launcher { display: flex; align-items: flex-end; gap: 6px; width: 100%; text-align: left; cursor: pointer; border-radius: 24px; }
 .komame-avatar { display: block; width: 68px; flex: 0 0 68px; }
 .komame { display: block; width: 100%; overflow: visible; }
-.komame-bubble { display: flex; flex-direction: column; gap: 3px; min-width: 0; padding: 12px 14px; background: #fff; border: 2px solid #b8dfc6; border-radius: 20px 20px 20px 4px; box-shadow: 0 5px 22px #123d1920; font-size: 16px; line-height: 1.45; }
+.komame-bubble { display: flex; flex-direction: column; gap: 3px; min-width: 0; padding: 12px 14px; background: #fff; border: 2px solid #b8dfc6; border-radius: 20px 20px 4px 20px; box-shadow: 0 5px 22px #123d1920; font-size: 16px; line-height: 1.45; }
 .komame-bubble b { color: #006b30; font-size: 16px; }
 .komame-call { color: #006b30; font-weight: 700; font-size: 16px; }
 .komame-body { animation: komame-bob 3.8s ease-in-out infinite; transform-origin: 50px 85px; }
@@ -71,7 +71,7 @@ input, select, textarea { font-size: 1.125rem; }
 .guide-next { flex: 1; color: #fff; background: #00873c; }
 .guide-back { border: 2px solid #b8dfc6; color: #006b30; }
 @media (max-width: 767px) {
-  .app-with-companion { padding-bottom: calc(300px + env(safe-area-inset-bottom)); }
+  .app-with-companion { padding-bottom: calc(80px + env(safe-area-inset-bottom)); }
   .mobile-navigation { display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); position: fixed; z-index: 40; inset: auto 0 0; min-height: 80px; padding: 7px 4px calc(7px + env(safe-area-inset-bottom)); border-top: 1px solid #d4e5d9; border-radius: 20px 20px 0 0; background: #fff; box-shadow: 0 -4px 24px #173c1410; }
   .mobile-menu-item { display: flex; flex-direction: column; justify-content: center; align-items: center; gap: 3px; min-height: 64px; border-radius: 14px; color: #56655b; font-size: 16px; font-weight: 700; white-space: nowrap; }
   .mobile-menu-item.is-current { color: #006b30; background: #e8f8ee; }
@@ -83,13 +83,13 @@ input, select, textarea { font-size: 1.125rem; }
 }
 @media (prefers-reduced-motion: reduce) { .komame-body, .komame-hand, .komame-eyes { animation: none; } }
 
-/* 説明とメニューの専用スペースを確保し、入力欄や送信ボタンに重ねない。 */
+/* 本文は下のメニューまで広げ、こまめと吹き出しを上に重ねる。 */
 .app-with-companion { height: 100dvh; min-height: 0; overflow: hidden; }
 .app-page-region { display: flex; flex: 1; min-height: 0; width: 100%; flex-direction: column; overflow-y: auto; overscroll-behavior-y: contain; }
 .app-page-region > header, .app-page-region > footer { flex-shrink: 0; }
 
 /* 説明は閉じられ、キャラクターからいつでも戻せる。 */
-.komame-guide { display: flex; align-items: flex-end; gap: 6px; }
+.komame-guide { display: flex; flex-direction: row-reverse; align-items: flex-end; gap: 6px; z-index: 45; background: transparent; }
 .komame-guide.is-collapsed { width: 68px; z-index: 45; background: transparent; border: 0; box-shadow: none; }
 .komame-guide.is-collapsed .komame-avatar { background: transparent; border: 0; box-shadow: none; }
 .komame-avatar { min-height: 60px; cursor: pointer; border-radius: 16px; }

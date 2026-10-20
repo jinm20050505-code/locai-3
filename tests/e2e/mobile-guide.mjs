@@ -15,7 +15,7 @@ try{
   const menu=p.getByRole('navigation',{name:'下のメニュー'});
   check(`${width}px：下のメニュー4つ`,await menu.getByRole('link').count()===4);
   check(`${width}px：横にはみ出さない`,await p.evaluate(()=>document.documentElement.scrollWidth<=innerWidth));
-  check(`${width}px：本文と案内は重ならない`,await p.evaluate(()=>document.querySelector('.app-page-region').getBoundingClientRect().bottom<=document.querySelector('.komame-guide').getBoundingClientRect().top));
+  check(`${width}px：本文の上に案内を重ねる`,await p.evaluate(()=>document.querySelector('.app-page-region').getBoundingClientRect().bottom>document.querySelector('.komame-guide').getBoundingClientRect().top));
  }
  await p.setViewportSize({width:390,height:844});
  await p.screenshot({path:output+'guide-home-mobile.png',fullPage:true,animations:"disabled",timeout:60000});

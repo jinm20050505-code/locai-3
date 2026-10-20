@@ -83,7 +83,7 @@ async function Body({ searchParams }: { searchParams: Promise<SP> }) {
       {go && !valid && <Notice kind="warn" title="入力を直してください">上の欄の近くに、理由と直し方を出しています。入力した内容はそのまま残っています。</Notice>}
 
       {r && (
-        <section aria-labelledby="result" className="space-y-4">
+        <section aria-labelledby="result" className="space-y-4" data-komame-cue={r.total === 0 ? "候補がなかったね。量・予算・日付を変えるか、こまめに代わりの野菜を相談してみよう。" : "候補が見つかったよ。商品の画面で数量と送料込みの金額を確認しよう。"}>
           <h2 id="result" className="text-xl font-bold">仕入れ候補：{r.total}件</h2>
           <p className="text-base text-sub">
             {v.mode === "any" ? "種類を問わない" : v.q}・{v.kg}kg・送料込み {Number(v.budget).toLocaleString("ja-JP")}円まで・{v.date.replaceAll("-", "/")} に使用・{prefName(v.pref)}{v.city}・{v.methods.map((m) => METHOD_LABEL[m as Method]).join("／")}

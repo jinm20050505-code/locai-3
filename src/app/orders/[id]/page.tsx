@@ -70,7 +70,7 @@ async function Detail({ params, searchParams }: { params: PageProps<"/orders/[id
       </div>
       <div className="rounded-2xl border-4 border-brand p-4">
         <p className="text-base font-bold">次にすること</p>
-        <p className="text-lg">{next}</p>
+        <p className="text-lg" data-komame-cue={done ? `${done}。${next}` : next}>{next}</p>
       </div>
 
       <section className={card} aria-labelledby="terms">

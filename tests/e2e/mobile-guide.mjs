@@ -13,6 +13,7 @@ try{
  for(const width of [320,390,430]){
   await p.setViewportSize({width,height:844});await p.goto(base);await p.getByRole('navigation',{name:'下のメニュー'}).waitFor();
   const menu=p.getByRole('navigation',{name:'下のメニュー'});
+  const reopen=p.getByRole('button',{name:'こまめの説明を開く',exact:true});if(await reopen.isVisible())await reopen.click();
   check(`${width}px：下のメニュー4つ`,await menu.getByRole('link').count()===4);
   check(`${width}px：横にはみ出さない`,await p.evaluate(()=>document.documentElement.scrollWidth<=innerWidth));
   check(`${width}px：本文の上に案内を重ねる`,await p.evaluate(()=>document.querySelector('.app-page-region').getBoundingClientRect().bottom>document.querySelector('.komame-guide').getBoundingClientRect().top));
@@ -36,6 +37,7 @@ try{
  await p.getByRole('navigation',{name:'下のメニュー'}).getByRole('link',{name:'探す',exact:true}).click();
  await p.waitForURL(/\/search$/);
  check('現在地が緑の選択状態になる',await p.getByRole('navigation',{name:'下のメニュー'}).getByRole('link',{name:'探す',exact:true}).getAttribute('aria-current')==='page');
+ await p.getByRole('button',{name:'こまめの説明を開く',exact:true}).click();
  check('画面に合った説明へ切り替わる',(await p.locator('#komame-hint').innerText()).includes('送料込み'));
  check('操作する場所は48px以上',await p.locator('.mobile-menu-item, .guide-close, .guide-next, .guide-back, .komame-launcher').evaluateAll(es=>es.filter(e=>e.getBoundingClientRect().height>0).every(e=>e.getBoundingClientRect().height>=48)));
  await c.close();

@@ -1,0 +1,10 @@
+import { it, expect, vi, beforeEach } from "vitest";
+const {ask,findMany} = vi.hoisted(()=>({ask:vi.fn(),findMany:vi.fn()}));
+vi.mock("@/server/ai",()=>({ask}));
+vi.mock("@/lib/db",()=>({getDb:()=>({listing:{findMany}})}));
+import { consultKomame } from "@/server/komame";
+const user = {id:"private-id",name:"秘密の店",role:"buyer" as const,prefecture:"27",city:"大阪市"};
+beforeEach(()=>{vi.resetAllMocks();findMany.mockResolvedValue([]);});
+it("不正入力ではDBもAIも呼ばない",async()=>{const r=await consultKomame(user,{messages:[]});expect(r.ok).toBe(false);expect(ask).not.toHaveBeenCalled();expect(findMany).not.toHaveBeenCalled();});
+it("会話を引き継ぎ、店名・個人ID・住所をAIの入力へ混ぜない",async()=>{ask.mockResolvedValue({ok:true,data:{reply:"野菜を考えよう",vegetables:["なす"],kg:null,date:null,budgetYen:null,pref:null,method:null}});const messages=[{role:"user",text:"カレー"},{role:"assistant",text:"何人分？"},{role:"user",text:"10人分"}];const r=await consultKomame(user,{messages});expect(r.ok).toBe(true);expect(ask.mock.calls[0][3].会話).toEqual(messages);expect(JSON.stringify(ask.mock.calls[0][3])).not.toContain("秘密の店");expect(JSON.stringify(ask.mock.calls[0][3])).not.toContain("private-id");expect(findMany).toHaveBeenCalledTimes(2);if(r.ok)expect(r.data.cards).toEqual([]);});
+it("AI失敗は失敗として返し、商品や注文を作らない",async()=>{ask.mockResolvedValue({ok:false,message:"上限"});expect(await consultKomame(user,{messages:[{role:"user",text:"なす"}]})).toEqual({ok:false,message:"上限"});expect(findMany).toHaveBeenCalledTimes(1);});

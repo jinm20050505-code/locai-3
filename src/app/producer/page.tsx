@@ -35,7 +35,7 @@ async function List({ searchParams }: { searchParams: PageProps<"/producer">["se
   const done = typeof sp.done === "string" ? DONE[sp.done] : null;
   return (
     <>
-      {done && <Notice kind="ok" title={done} />}
+      {done && <div data-komame-cue={`${done}。出品一覧で内容を確認しよう。`}><Notice kind="ok" title={done} /></div>}
       {rows.length === 0 && <p>まだ出品はありません。「野菜を出品する」から始めましょう。</p>}
       <ul className="space-y-4">
         {rows.map((l) => {

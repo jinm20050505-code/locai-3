@@ -102,7 +102,7 @@ export function ListingWizard({ initial, fresh, editId }: { initial: WizardValue
   };
 
   return (
-    <div ref={top} className="scroll-mt-4 space-y-5">
+    <div ref={top} className="scroll-mt-4 space-y-5" data-komame-cue={state.errors ? "入力欄の近くの直し方を確認しよう。書いた内容は残っているよ。" : ["まずは野菜と写真を入れよう。", "次は量と値段。無理なく売れる量を決めよう。", "受け渡し日と送料を確認しよう。分からない送料は見積もりにできるよ。", "名前・量・値段・受け渡しを確かめてから出品しよう。"][step]}>
       {resume && (
         <Notice title="前回の続きから再開しますか？">
           <p>入力の途中の出品（{resume.name}）が、このブラウザに残っています。写真は選び直してください。</p>

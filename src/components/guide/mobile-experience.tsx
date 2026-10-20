@@ -3,6 +3,8 @@
 import Link from "next/link";
 import { usePathname } from "next/navigation";
 import { useEffect, useRef, useState, useSyncExternalStore } from "react";
+import { KomameChat } from "./komame-chat";
+import { INPUT_HELP } from "@/lib/komame";
 import type { Role } from "@/lib/roles";
 
 // 案内の現在地はブラウザ側で確定してから表示する。
@@ -70,14 +72,42 @@ export function MobileExperience({ role }: { role: Role | null }) {
   useEffect(() => { document.querySelector(".app-page-region")?.scrollTo(0, 0); }, [path]);
   const [step, setStep] = useState(0);
   const [seen, setSeen] = useState(true);
-  const [collapsed, setCollapsed] = useState(false);
+  const [collapsed, setCollapsed] = useState(true);
+  const [temporarilyHidden, setTemporarilyHidden] = useState(false);
+  const bubbleHidden = collapsed || temporarilyHidden;
+  const [chatOpen, setChatOpen] = useState(false);
+  const [pageHint, setPageHint] = useState("");
+  const [fieldHint, setFieldHint] = useState("");
+  useEffect(() => {
+    // eslint-disable-next-line react-hooks/set-state-in-effect -- 画面が変わったら前の入力欄の説明を消す
+    setFieldHint("");
+    const region = document.querySelector(".app-page-region");
+    if (!region) return;
+    const update = () => setPageHint(region.querySelector<HTMLElement>("[data-komame-cue]")?.dataset.komameCue ?? "");
+    const focus = (e: Event) => {
+      const t = e.target;
+      if (!(t instanceof HTMLInputElement || t instanceof HTMLSelectElement || t instanceof HTMLTextAreaElement) || !region.contains(t)) return;
+      setTemporarilyHidden(true);
+      const key = t.name || t.id;
+      setFieldHint(key === "name" && !path.includes("/listings/") ? "表示するお店・農園の名前を入れよう。" : INPUT_HELP[key] ?? "");
+    };
+    const blur = () => { /* こまめを押したときも直前の欄の説明を読めるように残す */ };
+    const quiet = () => setTemporarilyHidden(true);
+    const invalid = () => setFieldHint("入力欄の近くに直し方が出ているよ。内容を直してから、もう一度進もう。");
+    const observer = new MutationObserver(update);
+    observer.observe(region, { childList: true, subtree: true, attributes: true, attributeFilter: ["data-komame-cue"] });
+    update();
+    region.addEventListener("pointerdown", quiet); region.addEventListener("scroll", quiet);
+    region.addEventListener("focusin", focus); region.addEventListener("focusout", blur); region.addEventListener("invalid", invalid, true);
+    return () => { observer.disconnect(); region.removeEventListener("pointerdown", quiet); region.removeEventListener("scroll", quiet); region.removeEventListener("focusin", focus); region.removeEventListener("focusout", blur); region.removeEventListener("invalid", invalid, true); };
+  }, [path]);
   useEffect(() => {
     // eslint-disable-next-line react-hooks/set-state-in-effect -- 初回の案内表示だけ、ブラウザ内の保存を読む
     try { setSeen(localStorage.getItem("locai3-guide-seen-v1") === "yes"); } catch { setSeen(false); }
   }, []);
   useEffect(() => {
     // eslint-disable-next-line react-hooks/set-state-in-effect -- 説明バーを閉じた設定をブラウザから復元する
-    try { setCollapsed(localStorage.getItem("locai3-guide-collapsed-v1") === "yes"); } catch { /* 保存不可なら説明を表示 */ }
+    try { setCollapsed(localStorage.getItem("locai3-guide-collapsed-v1") !== "no"); } catch { /* 保存不可なら説明を表示 */ }
   }, []);
   const toggleExplanation = (hide: boolean) => {
     setCollapsed(hide);
@@ -113,13 +143,15 @@ export function MobileExperience({ role }: { role: Role | null }) {
       <nav className="mobile-navigation" aria-label="下のメニュー">
         {nav.map(item => <Link key={item.href} href={item.href} aria-current={active(item.href) ? "page" : undefined} className={active(item.href) ? "mobile-menu-item is-current" : "mobile-menu-item"}><MenuIcon name={item.icon} /><span>{item.label}</span></Link>)}
       </nav>
-      <aside className={collapsed ? "komame-guide is-collapsed" : "komame-guide"} aria-label="こまめの使い方案内">
-        <button ref={avatar} type="button" className="komame-avatar" aria-label={collapsed ? "こまめの説明を開く" : "こまめに使い方を聞く"} onClick={() => collapsed ? toggleExplanation(false) : openTutorial()}><Komame /></button>
-        {!collapsed && <div className="komame-bubble">
+      <aside className={bubbleHidden ? "komame-guide is-collapsed" : "komame-guide"} aria-label="こまめの使い方案内">
+        <button ref={avatar} type="button" className="komame-avatar" aria-label={bubbleHidden ? "こまめの説明を開く" : "こまめに相談する"} onClick={() => { if (bubbleHidden) { setTemporarilyHidden(false); toggleExplanation(false); } else setChatOpen(v => !v); }}><Komame /></button>
+        {!bubbleHidden && !chatOpen && <div className="komame-bubble">
           <div className="komame-bubble-heading"><b>{seen ? "こまめのひとこと" : "はじめての方へ"}</b><button type="button" className="komame-dismiss" aria-label="こまめの説明バーを閉じる" onClick={() => toggleExplanation(true)}>閉じる <span aria-hidden="true">×</span></button></div>
-          <button type="button" className="komame-launcher" aria-label="こまめの使い方ガイドを開く" aria-describedby="komame-hint" onClick={openTutorial}><span id="komame-hint">{hint(path, role)}</span><span className="komame-call">タップで使い方を見る ›</span></button>
+          <button type="button" className="komame-launcher" aria-label="こまめの使い方ガイドを開く" aria-describedby="komame-hint" onClick={openTutorial}><span id="komame-hint">{fieldHint || pageHint || hint(path, role)}</span><span className="komame-call">タップで使い方を見る ›</span></button>
+          <button type="button" className="komame-consult" onClick={() => setChatOpen(true)}>料理・野菜を相談する</button>
         </div>}
       </aside>
+      <KomameChat role={role} open={chatOpen} onClose={() => { setChatOpen(false); avatar.current?.focus(); }} />
       <dialog ref={dialog} className="komame-tutorial" aria-labelledby="komame-title" onCancel={finish}>
         <div className="guide-modal-content">
           <div className="flex items-center justify-between gap-3"><p className="font-bold text-brand-dark">こまめの使い方ガイド</p><button type="button" className="guide-close" onClick={finish} aria-label="案内を閉じる">閉じる</button></div>

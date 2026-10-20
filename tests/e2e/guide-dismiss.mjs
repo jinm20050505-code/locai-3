@@ -9,6 +9,7 @@ try {
     const errors = [];
     page.on('pageerror', e => errors.push(e.message));
     await page.goto('http://localhost:3004/');
+    await page.getByRole('button', { name: 'こまめの説明を開く', exact: true }).click();
     const close = page.getByRole('button', { name: 'こまめの説明バーを閉じる', exact: true });
     await close.waitFor();
     assert.ok((await close.boundingBox()).height >= 48);

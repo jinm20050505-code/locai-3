@@ -40,7 +40,7 @@ export function OrderForm({ l, initial }: { l: OrderFormListing; initial: { gram
 
   if (step === "confirm" && chosen && fee !== null) {
     return (
-      <form action={action} className="space-y-4">
+      <form action={action} className="space-y-4" data-komame-cue={state.problems?.length ? "送れなかった理由を確認しよう。内容を直してからもう一度送ってね。" : "数量・総額・受け取りを確認しよう。送るだけでは確定せず、農家さんの回答を待つよ。"}>
         <input type="hidden" name="listingId" value={l.id} />
         <input type="hidden" name="requestId" value={requestId} />
         <input type="hidden" name="grams" value={grams} />

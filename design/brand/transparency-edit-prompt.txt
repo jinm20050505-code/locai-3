@@ -1,0 +1,6 @@
+Tool: built-in image_gen (edit), transparent_background=true
+Source: design/brand/locai-komame-emblem.png
+Master output: design/brand/locai-komame-emblem-transparent-v1.png
+Header output: public/brand/locai-komame-emblem-transparent-v1.webp
+
+Use case: background-extraction. Edit target: supplied LocAI mascot logo. Remove ONLY the solid green square background behind the mascot and lettering, replacing it with true alpha transparency. Keep the mascot, all leaves, face, hands, exact LocAI lettering, green/cream colors, cel-shaded highlights, dark outlines and white sticker-style outline unchanged. Do not redraw or restyle. Preserve the internal enclosed parts of the lettering. No new background, no square tile, no drop shadow outside the sticker. Output the isolated existing mascot plus LocAI text on a genuinely transparent canvas.

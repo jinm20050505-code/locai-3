@@ -18,7 +18,7 @@ export async function Header() {
     <header className="border-b-4 border-brand bg-white">
       <div className="mx-auto flex max-w-3xl flex-wrap items-center justify-between gap-x-2 px-4 py-2">
         <Link href="/" className="inline-flex min-h-12 items-center gap-2 text-xl font-bold text-ink">
-          <Image src="/brand/locai-komame-emblem-v1.webp" alt="" width={44} height={44} className="h-11 w-11 rounded-lg" priority />
+          <Image src="/brand/locai-komame-emblem-transparent-v1.webp" alt="" width={44} height={44} className="h-11 w-11 object-contain" priority />
           LocAI <span className="hidden text-base font-normal text-sub sm:inline">地元の野菜</span>
         </Link>
         {user && <div className="flex min-w-0 items-center gap-2"><p className="hidden max-w-64 truncate text-base text-sub md:block">{user.name} さん</p><Bell key={user.id} /></div>}
